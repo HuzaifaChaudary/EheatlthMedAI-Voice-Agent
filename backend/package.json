@@ -1,0 +1,31 @@
+{
+  "name": "ehealth-med-ai-backend",
+  "version": "1.0.0",
+  "description": "Backend API for EHealth Med AI Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate": "node scripts/migrate-simple.js",
+    "rotate-keys": "node scripts/rotate-encryption-keys.js expired",
+    "rotate-keys-schedule": "node scripts/rotate-encryption-keys.js schedule",
+    "cleanup-retention": "node scripts/cleanup-retention-data.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "express-validator": "^7.0.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "crypto": "^1.0.1",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
