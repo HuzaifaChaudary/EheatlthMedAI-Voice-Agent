@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const reportService = require('../services/reportService');
 const router = express.Router();
 
 // Get report templates
@@ -201,15 +202,51 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     const report = reportResult.rows[0];
     const format = report.format || report.template_format || 'pdf';
 
-    // Generate a simple report content (in production, this would read from file_path or generate dynamically)
+    // Parse parameters if it's a string
+    let parameters = report.parameters || {};
+    if (typeof parameters === 'string') {
+      try {
+        parameters = JSON.parse(parameters);
+      } catch (e) {
+        console.error('Error parsing report parameters:', e);
+        parameters = {};
+      }
+    }
+
+    // Fetch report data
+    const reportData = await reportService.fetchReportData(report, parameters);
+
+    // Generate report based on format
     let content;
     let contentType;
     let filename;
 
     switch (format.toLowerCase()) {
       case 'pdf':
-        // Note: Returning HTML instead of PDF for browser compatibility
-        // In production, use a PDF library like puppeteer, jsPDF, or PDFKit
+        // Generate actual PDF
+        try {
+          content = await reportService.generatePDFReport(report, reportData);
+          contentType = 'application/pdf';
+          filename = `report-${report.id}.pdf`;
+        } catch (error) {
+          console.error('Error generating PDF:', error);
+          return res.status(500).json({ message: 'Error generating PDF report', error: error.message });
+        }
+        break;
+      case 'xlsx':
+      case 'excel':
+        // Generate Excel file
+        try {
+          content = await reportService.generateExcelReport(report, reportData);
+          contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          filename = `report-${report.id}.xlsx`;
+        } catch (error) {
+          console.error('Error generating Excel:', error);
+          return res.status(500).json({ message: 'Error generating Excel report', error: error.message });
+        }
+        break;
+      case 'html':
+        // Generate HTML report
         content = `<!DOCTYPE html>
 <html>
 <head>
@@ -292,24 +329,58 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
         filename = `report-${report.id}.json`;
         break;
       case 'html':
+        // Generate HTML report with actual data
+        const htmlDataRows = reportData.map(row => {
+          const cells = Object.entries(row).map(([key, value]) => 
+            `<td>${value !== null && value !== undefined ? String(value) : ''}</td>`
+          ).join('');
+          return `<tr>${cells}</tr>`;
+        }).join('');
+        
+        const htmlHeaders = reportData.length > 0 
+          ? Object.keys(reportData[0]).map(header => 
+              `<th>${header.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>`
+            ).join('')
+          : '<th>No Data</th>';
+        
         content = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Report ${report.id}</title>
+  <title>Report ${report.id} - ${report.template_name}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; }
-    h1 { color: #333; }
-    .info { margin: 20px 0; }
+    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+    .header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+    .title { color: #333; margin: 0; }
+    .subtitle { color: #666; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th { background-color: #4472C4; color: white; padding: 12px; text-align: left; }
+    td { padding: 10px; border-bottom: 1px solid #ddd; }
+    tr:hover { background-color: #f5f5f5; }
+    .info { margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-radius: 5px; }
+    @media print { body { margin: 20px; } }
   </style>
 </head>
 <body>
-  <h1>${report.template_name}</h1>
-  <div class="info">
-    <p><strong>Report ID:</strong> ${report.id}</p>
-    <p><strong>Template Type:</strong> ${report.template_type}</p>
-    <p><strong>Generated At:</strong> ${new Date(report.completed_at).toLocaleString()}</p>
+  <div class="header">
+    <h1 class="title">${report.template_name}</h1>
+    <p class="subtitle">Report ID: ${report.id} | Type: ${report.template_type}</p>
+    <p class="subtitle">Generated: ${new Date(report.completed_at).toLocaleString()}</p>
   </div>
-  <p>This is a sample report. In production, this would contain actual report data.</p>
+  
+  <div class="info">
+    <p><strong>Report Summary:</strong> ${reportData.length} records found</p>
+  </div>
+  
+  ${reportData.length > 0 ? `
+  <table>
+    <thead>
+      <tr>${htmlHeaders}</tr>
+    </thead>
+    <tbody>
+      ${htmlDataRows}
+    </tbody>
+  </table>
+  ` : '<p>No data available for this report.</p>'}
 </body>
 </html>`;
         contentType = 'text/html';
@@ -329,7 +400,13 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(content);
+    
+    // Send buffer for binary formats (PDF, Excel), string for text formats
+    if (content instanceof Buffer) {
+      res.send(content);
+    } else {
+      res.send(content);
+    }
   } catch (error) {
     console.error('Error downloading report:', error);
     res.status(500).json({ message: 'Error downloading report', error: error.message });

@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { requireRole } = require('../middleware/permissions');
 const router = express.Router();
 
 // Get portals
@@ -32,11 +33,8 @@ router.get('/portals', authenticateToken, async (req, res) => {
 });
 
 // Create portal
-router.post('/portals', authenticateToken, async (req, res) => {
+router.post('/portals', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
 
     const orgResult = await db.query(
       'SELECT organization_id FROM users WHERE id = $1',
@@ -73,6 +71,62 @@ router.post('/portals', authenticateToken, async (req, res) => {
   }
 });
 
+// Update portal
+router.put('/portals/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const { url, config } = req.body;
+
+    // Verify portal belongs to organization
+    let portalResult;
+    if (orgId) {
+      portalResult = await db.query(
+        'SELECT * FROM portals WHERE id = $1 AND organization_id = $2',
+        [id, orgId]
+      );
+    } else {
+      portalResult = await db.query(
+        'SELECT * FROM portals WHERE id = $1 AND organization_id IS NULL',
+        [id]
+      );
+    }
+
+    if (portalResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Portal not found' });
+    }
+
+    // Validate URL if provided
+    if (url) {
+      try {
+        new URL(url);
+      } catch {
+        return res.status(400).json({ message: 'Invalid URL format' });
+      }
+    }
+
+    const result = await db.query(
+      `UPDATE portals 
+       SET url = COALESCE($1, url), 
+           config = COALESCE($2::jsonb, config),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`,
+      [url || null, config ? JSON.stringify(config) : null, id]
+    );
+
+    res.json({ portal: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating portal:', error);
+    res.status(500).json({ message: 'Error updating portal', error: error.message });
+  }
+});
+
 // Get SDKs
 router.get('/sdks', authenticateToken, async (req, res) => {
   try {
@@ -102,11 +156,8 @@ router.get('/sdks', authenticateToken, async (req, res) => {
 });
 
 // Create SDK
-router.post('/sdks', authenticateToken, async (req, res) => {
+router.post('/sdks', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
 
     const orgResult = await db.query(
       'SELECT organization_id FROM users WHERE id = $1',
@@ -187,11 +238,8 @@ router.get('/channels', authenticateToken, async (req, res) => {
 });
 
 // Create voice channel
-router.post('/channels', authenticateToken, async (req, res) => {
+router.post('/channels', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
 
     const orgResult = await db.query(
       'SELECT organization_id FROM users WHERE id = $1',
@@ -238,11 +286,8 @@ router.post('/channels', authenticateToken, async (req, res) => {
 });
 
 // Delete voice channel
-router.delete('/channels/:id', authenticateToken, async (req, res) => {
+router.delete('/channels/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required' });
-    }
 
     const { id } = req.params;
     const orgResult = await db.query(

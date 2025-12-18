@@ -270,13 +270,81 @@ router.post('/ehr', authenticateToken, async (req, res) => {
       `INSERT INTO ehr_systems (organization_id, name, vendor, ehr_type, connection_type, connector_id, connector_type, sync_enabled, sync_frequency)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [orgId, name, vendor, ehr_type, connection_type, connector_id, connector_type, sync_enabled, sync_frequency]
+      [orgId, name, vendor, ehr_type, connection_type, connector_id || null, connector_type, sync_enabled, sync_frequency]
     );
 
     res.status(201).json({ ehr_system: result.rows[0] });
   } catch (error) {
     console.error('Error creating EHR system:', error);
     res.status(500).json({ message: 'Error creating EHR system' });
+  }
+});
+
+// Update EHR system (for linking connectors)
+router.put('/ehr/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const { connector_id, connector_type, sync_enabled, sync_frequency, is_active } = req.body;
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (connector_id !== undefined) {
+      updates.push(`connector_id = $${paramCount++}`);
+      values.push(connector_id || null);
+    }
+    if (connector_type !== undefined) {
+      updates.push(`connector_type = $${paramCount++}`);
+      values.push(connector_type);
+    }
+    if (sync_enabled !== undefined) {
+      updates.push(`sync_enabled = $${paramCount++}`);
+      values.push(sync_enabled);
+    }
+    if (sync_frequency !== undefined) {
+      updates.push(`sync_frequency = $${paramCount++}`);
+      values.push(sync_frequency);
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(is_active);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    values.push(id);
+    if (orgId) {
+      values.push(orgId);
+      updates.push(`WHERE id = $${paramCount++} AND (organization_id = $${paramCount} OR organization_id IS NULL)`);
+    } else {
+      updates.push(`WHERE id = $${paramCount} AND organization_id IS NULL`);
+    }
+
+    const query = `UPDATE ehr_systems SET ${updates.join(', ')} RETURNING *`;
+    const result = await db.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'EHR system not found' });
+    }
+
+    res.json({ ehr_system: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating EHR system:', error);
+    res.status(500).json({ message: 'Error updating EHR system', error: error.message });
   }
 });
 
@@ -528,6 +596,111 @@ router.get('/ehr/:id/pull/appointments', authenticateToken, async (req, res) => 
   } catch (error) {
     console.error('Error pulling appointments from EHR:', error);
     res.status(500).json({ message: 'Error pulling appointments from EHR', error: error.message });
+  }
+});
+
+// Test EHR connection
+router.get('/ehr/:id/test-connection', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    // Get EHR system
+      const ehrResult = await db.query(
+        `SELECT e.*, 
+              CASE WHEN e.connector_type = 'hl7' THEN row_to_json(h.*)
+                   WHEN e.connector_type = 'fhir' THEN row_to_json(f.*)
+              END as connector_data
+       FROM ehr_systems e
+       LEFT JOIN hl7_connectors h ON e.connector_id = h.id AND e.connector_type = 'hl7'
+       LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
+       WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
+        [id, orgId]
+      );
+
+    if (ehrResult.rows.length === 0) {
+      return res.status(404).json({ message: 'EHR system not found' });
+    }
+
+    const ehrSystem = ehrResult.rows[0];
+
+    if (!ehrSystem.connector_id || !ehrSystem.connector_type) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'EHR system is not connected to a connector. Please link a connector first.' 
+      });
+    }
+
+    // Test connection based on connector type
+    if (ehrSystem.connector_type === 'fhir') {
+      const connector = typeof ehrSystem.connector_data === 'string' 
+        ? JSON.parse(ehrSystem.connector_data) 
+        : ehrSystem.connector_data;
+      
+      // Try to search for CapabilityStatement or Patient to test connection
+      try {
+        const testResult = await fhirService.searchResources(connector, 'Patient', { _count: '1' });
+        return res.json({
+          success: true,
+          message: 'Connection test successful. FHIR endpoint is reachable.',
+          connector_type: 'fhir',
+          details: { total_resources: testResult.total || 0 }
+        });
+      } catch (error) {
+        return res.status(500).json({
+          success: false,
+          message: `Connection test failed: ${error.message}`,
+          connector_type: 'fhir'
+        });
+      }
+    } else if (ehrSystem.connector_type === 'hl7') {
+      const connector = typeof ehrSystem.connector_data === 'string' 
+        ? JSON.parse(ehrSystem.connector_data) 
+        : ehrSystem.connector_data;
+      
+      // For HL7, we can't easily test without sending a message
+      // Just verify the connector exists and endpoint URL is valid
+      if (connector.endpoint_url) {
+        try {
+          new URL(connector.endpoint_url);
+          return res.json({
+            success: true,
+            message: 'HL7 connector configuration is valid. Endpoint URL: ' + connector.endpoint_url,
+            connector_type: 'hl7',
+            endpoint_url: connector.endpoint_url
+          });
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid endpoint URL format',
+            connector_type: 'hl7'
+          });
+        }
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'HL7 connector missing endpoint URL',
+          connector_type: 'hl7'
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Unknown connector type: ' + ehrSystem.connector_type
+      });
+    }
+  } catch (error) {
+    console.error('Error testing EHR connection:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error testing connection', 
+      error: error.message 
+    });
   }
 });
 

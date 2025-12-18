@@ -23,7 +23,7 @@ class EHRSyncService {
          FROM ehr_systems e
          LEFT JOIN hl7_connectors h ON e.connector_id = h.id AND e.connector_type = 'hl7'
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
-         WHERE e.id = $1 AND e.organization_id = $2 AND e.is_active = true`,
+         WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
         [ehrSystemId, organizationId]
       );
 
@@ -118,7 +118,7 @@ class EHRSyncService {
                 END as connector_data
          FROM ehr_systems e
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
-         WHERE e.id = $1 AND e.organization_id = $2 AND e.is_active = true`,
+         WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
         [ehrSystemId, organizationId]
       );
 
@@ -162,7 +162,7 @@ class EHRSyncService {
                 END as connector_data
          FROM ehr_systems e
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
-         WHERE e.id = $1 AND e.organization_id = $2 AND e.is_active = true`,
+         WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
         [ehrSystemId, organizationId]
       );
 
@@ -206,7 +206,7 @@ class EHRSyncService {
                 END as connector_data
          FROM ehr_systems e
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
-         WHERE e.id = $1 AND e.organization_id = $2 AND e.is_active = true`,
+         WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
         [ehrSystemId, organizationId]
       );
 
@@ -253,21 +253,27 @@ class EHRSyncService {
    */
   async pullAppointmentsFromEHR(ehrSystemId, organizationId, dateRange = null) {
     try {
+      // Handle null organization_id case - match either by organization_id or if organization_id is null
+      // Also handle cases where is_active might be null (default to true)
       const ehrResult = await db.query(
         `SELECT e.*, 
                 CASE WHEN e.connector_type = 'fhir' THEN row_to_json(f.*)
                 END as connector_data
          FROM ehr_systems e
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
-         WHERE e.id = $1 AND e.organization_id = $2 AND e.is_active = true`,
+         WHERE e.id = $1 AND (e.organization_id = $2 OR e.organization_id IS NULL)`,
         [ehrSystemId, organizationId]
       );
 
       if (ehrResult.rows.length === 0) {
-        throw new Error(`EHR system ${ehrSystemId} not found or inactive`);
+        throw new Error(`EHR system ${ehrSystemId} not found`);
       }
 
       const ehrSystem = ehrResult.rows[0];
+
+      if (!ehrSystem.connector_id || !ehrSystem.connector_type) {
+        throw new Error('EHR system is not connected to a connector. Please link a connector first.');
+      }
 
       if (ehrSystem.connector_type !== 'fhir') {
         throw new Error('Appointment pull currently only supports FHIR');

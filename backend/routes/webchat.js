@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database');
 const aiService = require('../services/aiService');
+const webhookService = require('../services/webhookService');
 const router = express.Router();
 
 // Create or get web chat conversation
@@ -67,6 +68,29 @@ router.post('/conversation', async (req, res) => {
     );
 
     const conversation = conversationResult.rows[0];
+
+    // Trigger webhook events
+    try {
+      // Trigger both conversation.created and conversation.started for compatibility
+      await webhookService.deliverWebhookEvent('conversation.created', {
+        conversation_id: conversation.id,
+        agent_id: agent_id,
+        patient_name: patient_name,
+        patient_email: patient_email,
+        channel: 'web_chat'
+      }, orgId);
+
+      await webhookService.deliverWebhookEvent('conversation.started', {
+        conversation_id: conversation.id,
+        agent_id: agent_id,
+        patient_name: patient_name,
+        patient_email: patient_email,
+        channel: 'web_chat'
+      }, orgId);
+    } catch (webhookError) {
+      console.error('Error delivering webhook events:', webhookError);
+      // Don't fail the request if webhook fails
+    }
 
     res.status(201).json({
       conversation_id: conversation.id,
@@ -169,6 +193,32 @@ router.post('/message', async (req, res) => {
       'UPDATE conversations SET transcript = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [JSON.stringify(finalHistory), conversation_id]
     );
+
+    // Trigger webhook event for message
+    try {
+      let orgId = null;
+      try {
+        const agentOrgResult = await db.query(
+          'SELECT organization_id FROM ai_agents WHERE id = $1',
+          [agentId]
+        );
+        if (agentOrgResult.rows.length > 0) {
+          orgId = agentOrgResult.rows[0].organization_id;
+        }
+      } catch (error) {
+        console.error('Error getting organization from agent:', error);
+      }
+
+      await webhookService.deliverWebhookEvent('conversation.message', {
+        conversation_id: conversation_id,
+        user_message: message,
+        assistant_message: aiResponse.content,
+        agent_id: agentId
+      }, orgId);
+    } catch (webhookError) {
+      console.error('Error delivering conversation.message webhook:', webhookError);
+      // Don't fail the request if webhook fails
+    }
 
     res.json({
       conversation_id: conversation_id,

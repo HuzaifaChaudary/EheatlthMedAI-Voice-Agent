@@ -2,15 +2,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { requireRole } = require('../middleware/permissions');
 const router = express.Router();
 
-// Middleware to check admin role
-const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Admin access required' });
-  }
-  next();
-};
+// Use centralized permission middleware
+const requireAdmin = requireRole('admin');
 
 // Create user (admin only)
 router.post('/users', authenticateToken, requireAdmin, async (req, res) => {

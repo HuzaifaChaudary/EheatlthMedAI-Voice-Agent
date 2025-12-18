@@ -3,6 +3,8 @@ const helmet = require('helmet');
 const { body, param, query, validationResult } = require('express-validator');
 
 // Rate limiting configurations
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
 const createRateLimiter = (windowMs, maxRequests, message) => {
   return rateLimit({
     windowMs: windowMs,
@@ -12,29 +14,36 @@ const createRateLimiter = (windowMs, maxRequests, message) => {
     legacyHeaders: false,
     skip: (req) => {
       // Skip rate limiting for health checks
-      return req.path === '/api/health';
+      if (req.path === '/api/health') {
+        return true;
+      }
+      // In development, skip rate limiting for localhost
+      if (isDevelopment && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1')) {
+        return true;
+      }
+      return false;
     }
   });
 };
 
-// General API rate limiter (100 requests per 15 minutes)
+// General API rate limiter (much higher in development)
 const apiLimiter = createRateLimiter(
   15 * 60 * 1000,
-  100,
+  isDevelopment ? 10000 : 100, // 10,000 in dev, 100 in production
   'Too many requests, please try again later.'
 );
 
-// Strict rate limiter for auth endpoints (5 requests per 15 minutes)
+// Strict rate limiter for auth endpoints (more lenient in development)
 const authLimiter = createRateLimiter(
   15 * 60 * 1000,
-  5,
+  isDevelopment ? 1000 : 5, // 1,000 in dev, 5 in production
   'Too many authentication attempts, please try again later.'
 );
 
-// Strict rate limiter for sensitive operations (10 requests per hour)
+// Strict rate limiter for sensitive operations (more lenient in development)
 const sensitiveOperationLimiter = createRateLimiter(
   60 * 60 * 1000,
-  10,
+  isDevelopment ? 1000 : 10, // 1,000 in dev, 10 in production
   'Too many sensitive operations, please try again later.'
 );
 

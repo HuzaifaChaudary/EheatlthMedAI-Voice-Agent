@@ -46,13 +46,14 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       `;
     }
 
-    const paramOffset = params.length;
+    // Add date filters if provided
     if (start_date) {
       params.push(start_date);
       callStatsQuery += ` AND started_at >= $${params.length}`;
     }
     if (end_date) {
-      params.push(end_date);
+      // For end_date, we want to include the entire day, so add time component
+      params.push(end_date + ' 23:59:59');
       callStatsQuery += ` AND started_at <= $${params.length}`;
     }
 
@@ -72,39 +73,52 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       }] };
     }
 
-    // Get agent performance
+    // Get agent performance (with date filtering)
     let agentPerformance;
     try {
+      const agentPerfParams = [];
+      let joinConditions = [];
+      let paramIndex = 1;
+      
       if (orgId) {
-        agentPerformance = await db.query(
-          `SELECT 
-            aa.id, aa.name, aa.type,
-            COUNT(cl.id) as total_calls,
-            COUNT(cl.id) FILTER (WHERE cl.status = 'completed') as completed_calls,
-            AVG(cl.duration_seconds) as avg_duration,
-            AVG(cl.cost) as avg_cost
-          FROM ai_agents aa
-          LEFT JOIN call_logs cl ON aa.id = cl.agent_id AND cl.organization_id = $1
-          WHERE aa.organization_id = $1
-          GROUP BY aa.id, aa.name, aa.type
-          ORDER BY total_calls DESC`,
-          [orgId]
-        );
+        joinConditions.push('aa.id = cl.agent_id');
+        joinConditions.push(`cl.organization_id = $${paramIndex}`);
+        agentPerfParams.push(orgId);
+        paramIndex++;
       } else {
-        agentPerformance = await db.query(
-          `SELECT 
-            aa.id, aa.name, aa.type,
-            COUNT(cl.id) as total_calls,
-            COUNT(cl.id) FILTER (WHERE cl.status = 'completed') as completed_calls,
-            AVG(cl.duration_seconds) as avg_duration,
-            AVG(cl.cost) as avg_cost
-          FROM ai_agents aa
-          LEFT JOIN call_logs cl ON aa.id = cl.agent_id AND cl.organization_id IS NULL
-          WHERE aa.organization_id IS NULL
-          GROUP BY aa.id, aa.name, aa.type
-          ORDER BY total_calls DESC`
-        );
+        joinConditions.push('aa.id = cl.agent_id');
+        joinConditions.push('cl.organization_id IS NULL');
       }
+      
+      // Add date filters to JOIN condition (not WHERE, so we still show agents with no calls)
+      if (start_date) {
+        joinConditions.push(`cl.started_at >= $${paramIndex}`);
+        agentPerfParams.push(start_date);
+        paramIndex++;
+      }
+      if (end_date) {
+        joinConditions.push(`cl.started_at <= $${paramIndex}`);
+        agentPerfParams.push(end_date + ' 23:59:59');
+        paramIndex++;
+      }
+      
+      const whereClause = orgId ? 'WHERE aa.organization_id = $1' : 'WHERE aa.organization_id IS NULL';
+      
+      const agentPerfQuery = `
+        SELECT 
+          aa.id, aa.name, aa.type,
+          COUNT(cl.id) as total_calls,
+          COUNT(cl.id) FILTER (WHERE cl.status = 'completed') as completed_calls,
+          AVG(cl.duration_seconds) as avg_duration,
+          AVG(cl.cost) as avg_cost
+        FROM ai_agents aa
+        LEFT JOIN call_logs cl ON ${joinConditions.join(' AND ')}
+        ${whereClause}
+        GROUP BY aa.id, aa.name, aa.type
+        ORDER BY total_calls DESC
+      `;
+      
+      agentPerformance = await db.query(agentPerfQuery, agentPerfParams);
     } catch (queryError) {
       console.error('Error querying agent performance:', queryError.message);
       agentPerformance = { rows: [] };
@@ -135,35 +149,50 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       );
     }
 
-    // Get daily call volume (last 30 days)
+    // Get daily call volume (respects date range from query params)
     let dailyVolume;
     try {
+      const dailyVolumeParams = [];
+      let dailyVolumeQuery;
+      
       if (orgId) {
-        dailyVolume = await db.query(
-          `SELECT 
+        dailyVolumeQuery = `
+          SELECT 
             DATE(started_at) as date,
             COUNT(*) as call_count,
             SUM(duration_seconds) as total_duration
           FROM call_logs
           WHERE organization_id = $1
-            AND started_at >= CURRENT_DATE - INTERVAL '30 days'
-          GROUP BY DATE(started_at)
-          ORDER BY date DESC`,
-          [orgId]
-        );
+        `;
+        dailyVolumeParams.push(orgId);
       } else {
-        dailyVolume = await db.query(
-          `SELECT 
+        dailyVolumeQuery = `
+          SELECT 
             DATE(started_at) as date,
             COUNT(*) as call_count,
             SUM(duration_seconds) as total_duration
           FROM call_logs
           WHERE organization_id IS NULL
-            AND started_at >= CURRENT_DATE - INTERVAL '30 days'
-          GROUP BY DATE(started_at)
-          ORDER BY date DESC`
-        );
+        `;
       }
+      
+      // Add date filters if provided
+      if (start_date) {
+        dailyVolumeParams.push(start_date);
+        dailyVolumeQuery += ` AND started_at >= $${dailyVolumeParams.length}`;
+      } else {
+        // Default to last 30 days if no start_date provided
+        dailyVolumeQuery += ` AND started_at >= CURRENT_DATE - INTERVAL '30 days'`;
+      }
+      
+      if (end_date) {
+        dailyVolumeParams.push(end_date + ' 23:59:59');
+        dailyVolumeQuery += ` AND started_at <= $${dailyVolumeParams.length}`;
+      }
+      
+      dailyVolumeQuery += ` GROUP BY DATE(started_at) ORDER BY date DESC`;
+      
+      dailyVolume = await db.query(dailyVolumeQuery, dailyVolumeParams);
     } catch (queryError) {
       console.error('Error querying daily volume:', queryError.message);
       dailyVolume = { rows: [] };

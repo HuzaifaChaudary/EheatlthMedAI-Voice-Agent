@@ -43,6 +43,9 @@ export default function AnalyticsPage() {
     end_date: new Date().toISOString().split('T')[0]
   })
 
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState(30) // seconds
+
   useEffect(() => {
     if (!isAuthenticated()) {
       router.push('/login')
@@ -50,7 +53,19 @@ export default function AnalyticsPage() {
     }
 
     fetchAnalytics()
-  }, [router, dateRange])
+
+    // Set up polling if auto-refresh is enabled
+    let intervalId: NodeJS.Timeout | null = null
+    if (autoRefresh) {
+      intervalId = setInterval(() => {
+        fetchAnalytics()
+      }, refreshInterval * 1000)
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [router, dateRange, autoRefresh, refreshInterval])
 
   const fetchAnalytics = async () => {
     try {
@@ -154,9 +169,9 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Date Range Selector */}
+        {/* Date Range Selector and Auto-Refresh */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-6 border border-white/20">
-          <div className="flex gap-4 items-end">
+          <div className="flex gap-4 items-end flex-wrap">
             <div>
               <label className="block text-white text-sm mb-2">Start Date</label>
               <input
@@ -175,6 +190,35 @@ export default function AnalyticsPage() {
                 className="px-4 py-2 rounded-lg bg-white/20 border border-white/30 text-white"
               />
             </div>
+            <div className="flex gap-2 items-end">
+              <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <span>Auto-refresh</span>
+              </label>
+              {autoRefresh && (
+                <select
+                  value={refreshInterval}
+                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                  className="px-3 py-2 rounded-lg bg-white/20 border border-white/30 text-white text-sm"
+                >
+                  <option value={10}>10s</option>
+                  <option value={30}>30s</option>
+                  <option value={60}>1m</option>
+                  <option value={300}>5m</option>
+                </select>
+              )}
+            </div>
+            {autoRefresh && (
+              <div className="flex items-center gap-2 text-teal-400 text-sm">
+                <div className="w-2 h-2 bg-teal-400 rounded-full animate-pulse"></div>
+                <span>Live updates enabled</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -246,25 +290,151 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Daily Volume Chart */}
+          {/* Daily Volume Chart - Line and Bar */}
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-            <h2 className="text-2xl font-bold text-white mb-4">Daily Call Volume</h2>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {dailyVolume.map((day, index) => (
-                <div key={index} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
-                  <div>
-                    <div className="text-white font-medium">
-                      {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </div>
-                    <div className="text-slate-300 text-sm">{formatDuration(day.total_duration)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-bold text-lg">{day.call_count}</div>
-                    <div className="text-slate-300 text-xs">calls</div>
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-white">Daily Call Volume</h2>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 bg-teal-600/20 text-teal-300 rounded text-xs border border-teal-500">
+                  Bar
+                </button>
+              </div>
             </div>
+            {dailyVolume.length > 0 ? (
+              <>
+                {/* Combined Line and Bar Chart */}
+                <div className="mb-6 relative">
+                  <svg viewBox="0 0 800 250" className="w-full h-64">
+                    {/* Grid lines */}
+                    {[0, 25, 50, 75, 100].map((y) => (
+                      <line
+                        key={y}
+                        x1="50"
+                        y1={50 + (y / 100) * 150}
+                        x2="750"
+                        y2={50 + (y / 100) * 150}
+                        stroke="rgba(255,255,255,0.1)"
+                        strokeWidth="1"
+                      />
+                    ))}
+                    {/* Y-axis labels */}
+                    {(() => {
+                      const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                      return [0, 25, 50, 75, 100].map((y) => (
+                        <text
+                          key={y}
+                          x="45"
+                          y={55 + (y / 100) * 150}
+                          fill="rgba(255,255,255,0.5)"
+                          fontSize="10"
+                          textAnchor="end"
+                        >
+                          {Math.round((maxCalls * y) / 100)}
+                        </text>
+                      ))
+                    })()}
+                    {/* Bar Chart */}
+                    {dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                      const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                      const height = ((day.call_count || 0) / maxCalls) * 150
+                      const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700
+                      const width = 700 / Math.min(dailyVolume.length, 30) - 2
+                      return (
+                        <rect
+                          key={index}
+                          x={x}
+                          y={200 - height}
+                          width={width}
+                          height={height}
+                          fill="#14b8a6"
+                          className="hover:fill-teal-400 transition-colors cursor-pointer"
+                        >
+                          <title>{`${day.call_count} calls on ${new Date(day.date).toLocaleDateString()}`}</title>
+                        </rect>
+                      )
+                    })}
+                    {/* Line Chart Overlay */}
+                    <polyline
+                      points={dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                        const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                        const height = ((day.call_count || 0) / maxCalls) * 150
+                        const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
+                        const y = 200 - height
+                        return `${x},${y}`
+                      }).join(' ')}
+                      fill="none"
+                      stroke="#3b82f6"
+                      strokeWidth="2"
+                      className="cursor-pointer"
+                    />
+                    {/* Data points */}
+                    {dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                      const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                      const height = ((day.call_count || 0) / maxCalls) * 150
+                      const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
+                      const y = 200 - height
+                      return (
+                        <circle
+                          key={index}
+                          cx={x}
+                          cy={y}
+                          r="4"
+                          fill="#3b82f6"
+                          className="hover:r-6 transition-all cursor-pointer"
+                        >
+                          <title>{`${day.call_count} calls on ${new Date(day.date).toLocaleDateString()}`}</title>
+                        </circle>
+                      )
+                    })}
+                    {/* X-axis labels */}
+                    {dailyVolume.slice(0, 30).reverse().filter((_, index) => index % 5 === 0).map((day, labelIndex) => {
+                      const index = labelIndex * 5
+                      const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
+                      return (
+                        <text
+                          key={index}
+                          x={x}
+                          y="235"
+                          fill="rgba(255,255,255,0.5)"
+                          fontSize="10"
+                          textAnchor="middle"
+                        >
+                          {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </text>
+                      )
+                    })}
+                  </svg>
+                </div>
+                {/* List View with Drill-down */}
+                <div className="space-y-2 max-h-48 overflow-y-auto border-t border-white/10 pt-4">
+                  {dailyVolume.map((day, index) => (
+                    <div 
+                      key={index} 
+                      className="flex items-center justify-between bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-colors cursor-pointer"
+                      onClick={() => {
+                        // Drill-down functionality - could open a modal or navigate to detailed view
+                        alert(`Drill-down for ${new Date(day.date).toLocaleDateString()}: ${day.call_count} calls, ${formatDuration(day.total_duration)} total duration`)
+                      }}
+                    >
+                      <div>
+                        <div className="text-white font-medium text-sm">
+                          {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </div>
+                        <div className="text-slate-300 text-xs">{formatDuration(day.total_duration)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-white font-bold">{day.call_count}</div>
+                        <div className="text-slate-300 text-xs">calls</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-slate-300">
+                No call volume data available for the selected date range.
+              </div>
+            )}
           </div>
         </div>
       </main>
