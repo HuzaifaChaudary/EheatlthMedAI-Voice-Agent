@@ -88,9 +88,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Handle preflight
 
+// Security middleware
+const { helmetConfig, apiLimiter, sanitizeInput } = require('./middleware/security');
+app.use(helmetConfig);
+app.use(apiLimiter);
+app.use(sanitizeInput);
+
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -98,8 +104,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
+// Routes with rate limiting
+const { authLimiter, sensitiveOperationLimiter } = require('./middleware/security');
+app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
@@ -107,13 +114,13 @@ app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/telephony', require('./routes/telephony'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/analytics', require('./routes/analytics'));
-app.use('/api/hipaa', require('./routes/hipaa'));
+app.use('/api/hipaa', sensitiveOperationLimiter, require('./routes/hipaa'));
 app.use('/api/terminology', require('./routes/terminology'));
 app.use('/api/references', require('./routes/references'));
 app.use('/api/stakeholders', require('./routes/stakeholders'));
 app.use('/api/voice-ai', require('./routes/voice-ai'));
 app.use('/api/integrations-ehr', require('./routes/integrations-ehr'));
-app.use('/api/security', require('./routes/security'));
+app.use('/api/security', sensitiveOperationLimiter, require('./routes/security'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/presentation', require('./routes/presentation'));
 app.use('/api/requirements', require('./routes/requirements'));
@@ -123,6 +130,7 @@ app.use('/api/change-control', require('./routes/change-control'));
 app.use('/api/deliverables', require('./routes/deliverables'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/ai-status', require('./routes/ai-status'));
+app.use('/api/webchat', require('./routes/webchat'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -314,6 +322,17 @@ async function startServer() {
     console.log('⏰ Database time:', result.rows[0].time);
   } catch (error) {
     console.error('❌ Database connection error:', error.message);
+  }
+  
+  // Start scheduled tasks (only in production or if enabled)
+  if (process.env.ENABLE_SCHEDULER === 'true' || process.env.NODE_ENV === 'production') {
+    try {
+      const schedulerService = require('./services/schedulerService');
+      schedulerService.start();
+      console.log('✅ Scheduled tasks started');
+    } catch (error) {
+      console.error('⚠️  Failed to start scheduler:', error.message);
+    }
   }
   
   console.log('═'.repeat(50));

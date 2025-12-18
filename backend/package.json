@@ -9,23 +9,30 @@
     "migrate": "node scripts/migrate-simple.js",
     "rotate-keys": "node scripts/rotate-encryption-keys.js expired",
     "rotate-keys-schedule": "node scripts/rotate-encryption-keys.js schedule",
-    "cleanup-retention": "node scripts/cleanup-retention-data.js"
+    "cleanup-retention": "node scripts/cleanup-retention-data.js",
+    "setup-scheduler": "bash scripts/setup-scheduler-env.sh",
+    "enable-scheduler": "bash scripts/setup-scheduler-env.sh true",
+    "disable-scheduler": "bash scripts/setup-scheduler-env.sh false"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "pg": "^8.11.3",
-    "dotenv": "^16.3.1",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
     "cors": "^2.8.5",
-    "express-validator": "^7.0.1",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "express-validator": "^7.3.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.2.1",
+    "node-hl7": "^0.1.3",
+    "nodemailer": "^6.9.7",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "crypto": "^1.0.1",
-    "nodemailer": "^6.9.7"
+    "pg": "^8.11.3",
+    "twilio": "^5.11.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
   }
 }
-

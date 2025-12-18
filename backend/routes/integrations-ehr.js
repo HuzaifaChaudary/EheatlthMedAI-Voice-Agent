@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const hl7Service = require('../services/hl7Service');
+const fhirService = require('../services/fhirService');
+const ehrSyncService = require('../services/ehrSyncService');
 const router = express.Router();
 
 // HL7 Connectors
@@ -274,6 +277,257 @@ router.post('/ehr', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error creating EHR system:', error);
     res.status(500).json({ message: 'Error creating EHR system' });
+  }
+});
+
+// HL7 Message Operations
+router.post('/hl7/:id/send', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const { message_data, message_string } = req.body;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const connectorResult = await db.query(
+      'SELECT * FROM hl7_connectors WHERE id = $1 AND organization_id = $2 AND is_active = true',
+      [id, orgId]
+    );
+
+    if (connectorResult.rows.length === 0) {
+      return res.status(404).json({ message: 'HL7 connector not found' });
+    }
+
+    const connector = connectorResult.rows[0];
+
+    let hl7Message;
+    if (message_string) {
+      hl7Message = message_string;
+    } else if (message_data) {
+      hl7Message = hl7Service.generateMessage(message_data);
+    } else {
+      return res.status(400).json({ message: 'message_data or message_string is required' });
+    }
+
+    const result = await hl7Service.sendMessage(hl7Message, connector);
+    res.json(result);
+  } catch (error) {
+    console.error('Error sending HL7 message:', error);
+    res.status(500).json({ message: 'Error sending HL7 message', error: error.message });
+  }
+});
+
+router.post('/hl7/parse', authenticateToken, async (req, res) => {
+  try {
+    const { message_string } = req.body;
+
+    if (!message_string) {
+      return res.status(400).json({ message: 'message_string is required' });
+    }
+
+    const parsed = hl7Service.parseMessage(message_string);
+    res.json({ parsed });
+  } catch (error) {
+    console.error('Error parsing HL7 message:', error);
+    res.status(500).json({ message: 'Error parsing HL7 message', error: error.message });
+  }
+});
+
+router.post('/hl7/generate-adt', authenticateToken, async (req, res) => {
+  try {
+    const appointmentData = req.body;
+    const hl7Message = hl7Service.generateADTMessage(appointmentData);
+    res.json({ message: hl7Message });
+  } catch (error) {
+    console.error('Error generating HL7 ADT message:', error);
+    res.status(500).json({ message: 'Error generating HL7 message', error: error.message });
+  }
+});
+
+// FHIR Resource Operations
+router.post('/fhir/:id/resources/:resourceType', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id, resourceType } = req.params;
+    const resourceData = req.body;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const connectorResult = await db.query(
+      'SELECT * FROM fhir_connectors WHERE id = $1 AND organization_id = $2 AND is_active = true',
+      [id, orgId]
+    );
+
+    if (connectorResult.rows.length === 0) {
+      return res.status(404).json({ message: 'FHIR connector not found' });
+    }
+
+    const connector = connectorResult.rows[0];
+    const result = await fhirService.createResource(connector, resourceType, resourceData);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating FHIR resource:', error);
+    res.status(500).json({ message: 'Error creating FHIR resource', error: error.message });
+  }
+});
+
+router.get('/fhir/:id/resources/:resourceType/:resourceId', authenticateToken, async (req, res) => {
+  try {
+    const { id, resourceType, resourceId } = req.params;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const connectorResult = await db.query(
+      'SELECT * FROM fhir_connectors WHERE id = $1 AND organization_id = $2 AND is_active = true',
+      [id, orgId]
+    );
+
+    if (connectorResult.rows.length === 0) {
+      return res.status(404).json({ message: 'FHIR connector not found' });
+    }
+
+    const connector = connectorResult.rows[0];
+    const result = await fhirService.getResource(connector, resourceType, resourceId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting FHIR resource:', error);
+    res.status(500).json({ message: 'Error getting FHIR resource', error: error.message });
+  }
+});
+
+router.get('/fhir/:id/resources/:resourceType', authenticateToken, async (req, res) => {
+  try {
+    const { id, resourceType } = req.params;
+    const searchParams = req.query;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const connectorResult = await db.query(
+      'SELECT * FROM fhir_connectors WHERE id = $1 AND organization_id = $2 AND is_active = true',
+      [id, orgId]
+    );
+
+    if (connectorResult.rows.length === 0) {
+      return res.status(404).json({ message: 'FHIR connector not found' });
+    }
+
+    const connector = connectorResult.rows[0];
+    const result = await fhirService.searchResources(connector, resourceType, searchParams);
+    res.json(result);
+  } catch (error) {
+    console.error('Error searching FHIR resources:', error);
+    res.status(500).json({ message: 'Error searching FHIR resources', error: error.message });
+  }
+});
+
+// EHR Synchronization
+router.post('/ehr/:id/sync/patient', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const patientData = req.body;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await ehrSyncService.syncPatientToEHR(patientData, id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error syncing patient to EHR:', error);
+    res.status(500).json({ message: 'Error syncing patient to EHR', error: error.message });
+  }
+});
+
+router.post('/ehr/:id/sync/appointment', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const appointmentData = req.body;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await ehrSyncService.syncAppointmentToEHR(appointmentData, id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error syncing appointment to EHR:', error);
+    res.status(500).json({ message: 'Error syncing appointment to EHR', error: error.message });
+  }
+});
+
+router.get('/ehr/:id/pull/patient/:patientId', authenticateToken, async (req, res) => {
+  try {
+    const { id, patientId } = req.params;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await ehrSyncService.pullPatientFromEHR(patientId, id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error pulling patient from EHR:', error);
+    res.status(500).json({ message: 'Error pulling patient from EHR', error: error.message });
+  }
+});
+
+router.get('/ehr/:id/pull/appointments', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date } = req.query;
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const dateRange = (start_date || end_date) ? {
+      start: start_date,
+      end: end_date
+    } : null;
+
+    const result = await ehrSyncService.pullAppointmentsFromEHR(id, orgId, dateRange);
+    res.json(result);
+  } catch (error) {
+    console.error('Error pulling appointments from EHR:', error);
+    res.status(500).json({ message: 'Error pulling appointments from EHR', error: error.message });
   }
 });
 

@@ -2,6 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const webhookService = require('../services/webhookService');
+const appointmentSyncService = require('../services/appointmentSyncService');
+const billingSyncService = require('../services/billingSyncService');
+const crmService = require('../services/crmService');
 const router = express.Router();
 
 // Get all integrations
@@ -188,6 +192,240 @@ router.post('/api-keys', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error creating API key:', error);
     res.status(500).json({ message: 'Error creating API key' });
+  }
+});
+
+// Appointment Synchronization
+router.post('/appointments/:appointmentId/sync', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { appointmentId } = req.params;
+    const { integration_id } = req.body;
+
+    if (!integration_id) {
+      return res.status(400).json({ message: 'integration_id is required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await appointmentSyncService.syncAppointment(appointmentId, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error syncing appointment:', error);
+    res.status(500).json({ message: 'Error syncing appointment', error: error.message });
+  }
+});
+
+// Billing Synchronization
+router.post('/billing/sync', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { billing_data, integration_id } = req.body;
+
+    if (!integration_id || !billing_data) {
+      return res.status(400).json({ message: 'integration_id and billing_data are required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await billingSyncService.syncBillingData(billing_data, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error syncing billing data:', error);
+    res.status(500).json({ message: 'Error syncing billing data', error: error.message });
+  }
+});
+
+router.post('/billing/charge', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { charge_data, integration_id } = req.body;
+
+    if (!integration_id || !charge_data) {
+      return res.status(400).json({ message: 'integration_id and charge_data are required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await billingSyncService.createCharge(charge_data, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating charge:', error);
+    res.status(500).json({ message: 'Error creating charge', error: error.message });
+  }
+});
+
+router.get('/billing/balance/:patientId', authenticateToken, async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { integration_id } = req.query;
+
+    if (!integration_id) {
+      return res.status(400).json({ message: 'integration_id is required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await billingSyncService.getPatientBalance(patientId, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting patient balance:', error);
+    res.status(500).json({ message: 'Error getting patient balance', error: error.message });
+  }
+});
+
+// CRM Ticket Management
+router.post('/crm/tickets', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { ticket_data, integration_id } = req.body;
+
+    if (!integration_id || !ticket_data) {
+      return res.status(400).json({ message: 'integration_id and ticket_data are required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await crmService.createTicket(ticket_data, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating CRM ticket:', error);
+    res.status(500).json({ message: 'Error creating CRM ticket', error: error.message });
+  }
+});
+
+router.post('/crm/tickets/from-conversation/:conversationId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { conversationId } = req.params;
+    const { ticket_data, integration_id } = req.body;
+
+    if (!integration_id) {
+      return res.status(400).json({ message: 'integration_id is required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await crmService.createTicketFromConversation(
+      conversationId,
+      ticket_data || {},
+      integration_id,
+      orgId
+    );
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating ticket from conversation:', error);
+    res.status(500).json({ message: 'Error creating ticket from conversation', error: error.message });
+  }
+});
+
+router.put('/crm/tickets/:ticketId', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { ticketId } = req.params;
+    const { updates, integration_id } = req.body;
+
+    if (!integration_id || !updates) {
+      return res.status(400).json({ message: 'integration_id and updates are required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await crmService.updateTicket(ticketId, updates, integration_id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating CRM ticket:', error);
+    res.status(500).json({ message: 'Error updating CRM ticket', error: error.message });
+  }
+});
+
+// Webhook Delivery
+router.post('/webhooks/:id/deliver', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const { event_type, payload } = req.body;
+
+    if (!event_type || !payload) {
+      return res.status(400).json({ message: 'event_type and payload are required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const result = await webhookService.deliverWebhook(id, event_type, payload, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error delivering webhook:', error);
+    res.status(500).json({ message: 'Error delivering webhook', error: error.message });
+  }
+});
+
+router.post('/webhooks/retry-failed', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { limit = 10 } = req.body;
+
+    const result = await webhookService.retryFailedWebhooks(limit);
+    res.json({ results: result });
+  } catch (error) {
+    console.error('Error retrying failed webhooks:', error);
+    res.status(500).json({ message: 'Error retrying failed webhooks', error: error.message });
   }
 });
 

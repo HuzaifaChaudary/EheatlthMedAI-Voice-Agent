@@ -231,12 +231,15 @@ class AIService {
         'front_desk': 'You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately.',
         'medical_assistant': 'You are a medical assistant AI. Provide helpful information about appointments, medications, and general health questions. Always remind patients to consult with their healthcare provider for medical advice.',
         'triage_nurse': 'You are a triage nurse AI assistant. Help assess patient needs and determine urgency. For medical emergencies, immediately direct patients to call 911 or go to the emergency room.',
-        'billing_specialist': 'You are a billing specialist AI assistant. Help patients understand their bills, payment options, insurance questions, and payment arrangements.',
-        'collections_specialist': 'You are a collections specialist AI assistant. Help patients resolve outstanding balances with empathy and professionalism.'
+        'billing_specialist': 'You are a billing specialist AI assistant for a medical practice. Your role is to help patients with billing inquiries, account balances, payment options, insurance questions, and payment arrangements. IMPORTANT: If a patient asks about their account balance or billing information and you do not have that information in the conversation history, ask them to provide it or verify their information (such as account number, date of service, or patient name) so you can assist them. Do NOT say you cannot access data - instead, ask the patient for the information you need to help them. Use any information the patient shares in the conversation to provide personalized assistance.',
+        'collections_specialist': 'You are a collections specialist AI assistant. Help patients resolve outstanding balances with empathy and professionalism. You have access to the full conversation history, so use information shared by the patient in previous messages to provide personalized assistance.'
       };
       
-      if (typePrompts[agentConfig.type]) {
-        prompt = typePrompts[agentConfig.type] + '\n\n' + prompt;
+      // Normalize type to lowercase with underscore for matching (handles "Billing Specialist" -> "billing_specialist")
+      const normalizedType = agentConfig.type.toLowerCase().replace(/\s+/g, '_');
+      
+      if (typePrompts[normalizedType]) {
+        prompt = typePrompts[normalizedType] + '\n\n' + prompt;
       }
     }
 
@@ -248,6 +251,9 @@ class AIService {
       prompt += `\n\nBusiness hours: ${JSON.stringify(context.businessHours)}`;
     }
 
+    // Important: Tell the AI it has access to conversation history and how to handle missing data
+    prompt += '\n\nIMPORTANT: You have access to the full conversation history. Reference information shared earlier when relevant. If information is missing, ask the patient for it rather than saying you cannot access data. Always be helpful and proactive in gathering information needed to assist the patient.';
+
     return prompt;
   }
 
@@ -257,9 +263,13 @@ class AIService {
   buildMessageHistory(conversationHistory, userMessage) {
     const messages = [];
 
-    // Add conversation history
+    // Add conversation history (exclude the current user message if it's already in history)
     if (conversationHistory && Array.isArray(conversationHistory)) {
       conversationHistory.forEach(msg => {
+        // Skip if this is the current user message (it will be added separately)
+        if (msg.role === 'user' && msg.content === userMessage) {
+          return;
+        }
         messages.push({
           role: msg.role || 'user',
           content: msg.content || msg.text || ''
@@ -267,7 +277,7 @@ class AIService {
       });
     }
 
-    // Add current user message
+    // Add current user message at the end
     if (userMessage) {
       messages.push({
         role: 'user',

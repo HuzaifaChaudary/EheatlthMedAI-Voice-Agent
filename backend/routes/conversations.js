@@ -3,6 +3,7 @@ const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const aiService = require('../services/aiService');
 const ttsService = require('../services/ttsService');
+const webhookService = require('../services/webhookService');
 const router = express.Router();
 
 // Get all conversations
@@ -191,6 +192,19 @@ router.post('/', authenticateToken, async (req, res) => {
       'UPDATE conversations SET transcript = $1 WHERE id = $2',
       [JSON.stringify(transcript), conversation.id]
     );
+
+    // Trigger webhook event
+    try {
+      await webhookService.deliverWebhookEvent('conversation.created', {
+        conversation_id: conversation.id,
+        agent_id: agent_id,
+        patient_name: patient_name,
+        patient_phone: patient_phone
+      }, orgId);
+    } catch (webhookError) {
+      console.error('Error delivering conversation.created webhook:', webhookError);
+      // Don't fail the request if webhook fails
+    }
 
     res.status(201).json({
       conversation: {
