@@ -195,7 +195,7 @@ class AIService {
   }) {
     const provider = agentConfig.provider || 'openai';
     const model = agentConfig.model || (provider === 'openai' ? 'gpt-4' : 'claude-3-opus-20240229');
-    const systemPrompt = this.buildSystemPrompt(agentConfig, context);
+    const systemPrompt = await this.buildSystemPrompt(agentConfig, context);
     
     const messages = this.buildMessageHistory(conversationHistory, userMessage);
 
@@ -207,6 +207,67 @@ class AIService {
       ? parseInt(agentConfig.max_tokens, 10) 
       : (agentConfig.max_tokens || 1000);
 
+    // Add appointment booking functions for Front Desk agents
+    let functions = agentConfig.functions || null;
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'front_desk') {
+      const appointmentBookingService = require('./appointmentBookingService');
+      const bookingFunctions = appointmentBookingService.getBookingFunctions();
+      functions = functions ? [...functions, ...bookingFunctions] : bookingFunctions;
+    }
+
+    // Add Medical Assistant functions
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'medical_assistant') {
+      const medicationRefillService = require('./medicationRefillService');
+      const labResultsService = require('./labResultsService');
+      const preVisitIntakeService = require('./preVisitIntakeService');
+      const prepInstructionsService = require('./prepInstructionsService');
+      
+      const medicalFunctions = [
+        ...medicationRefillService.getRefillFunctions(),
+        ...labResultsService.getLabResultFunctions(),
+        ...preVisitIntakeService.getIntakeFunctions(),
+        ...prepInstructionsService.getPrepInstructionFunctions()
+      ];
+      
+      functions = functions ? [...functions, ...medicalFunctions] : medicalFunctions;
+    }
+
+    // Add Triage Nurse functions
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'triage_nurse') {
+      const symptomCheckerService = require('./symptomCheckerService');
+      const emergencyServicesService = require('./emergencyServicesService');
+      const providerScheduleService = require('./providerScheduleService');
+      const emrTriageDocumentationService = require('./emrTriageDocumentationService');
+      const appointmentBookingService = require('./appointmentBookingService');
+      
+      const triageFunctions = [
+        ...symptomCheckerService.getSymptomCheckerFunctions(),
+        ...emergencyServicesService.getEmergencyFunctions(),
+        ...providerScheduleService.getProviderScheduleFunctions(),
+        ...emrTriageDocumentationService.getEMRDocumentationFunctions(),
+        ...appointmentBookingService.getBookingFunctions() // For scheduling visits
+      ];
+      
+      functions = functions ? [...functions, ...triageFunctions] : triageFunctions;
+    }
+
+    // Add Billing Specialist functions
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'billing_specialist') {
+      const statementExplanationService = require('./statementExplanationService');
+      const insuranceQAService = require('./insuranceQAService');
+      const paymentGatewayService = require('./paymentGatewayService');
+      const paymentReceiptService = require('./paymentReceiptService');
+      
+      const billingFunctions = [
+        ...statementExplanationService.getStatementExplanationFunctions(),
+        ...insuranceQAService.getInsuranceQAFunctions(),
+        ...paymentGatewayService.getPaymentGatewayFunctions(),
+        ...paymentReceiptService.getReceiptFunctions()
+      ];
+      
+      functions = functions ? [...functions, ...billingFunctions] : billingFunctions;
+    }
+
     return await this.generateResponse({
       provider,
       model,
@@ -214,7 +275,7 @@ class AIService {
       systemPrompt,
       temperature: isNaN(temperature) ? 0.7 : temperature,
       maxTokens: isNaN(maxTokens) ? 1000 : maxTokens,
-      functions: agentConfig.functions || null,
+      functions: functions,
       agentType: agentConfig.type
     });
   }
@@ -222,17 +283,17 @@ class AIService {
   /**
    * Build system prompt based on agent configuration
    */
-  buildSystemPrompt(agentConfig, context = {}) {
+  async buildSystemPrompt(agentConfig, context = {}) {
     let prompt = agentConfig.system_prompt || 'You are a helpful AI assistant.';
 
     // Add agent-specific context
     if (agentConfig.type) {
       const typePrompts = {
-        'front_desk': 'You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately.',
-        'medical_assistant': 'You are a medical assistant AI. Provide helpful information about appointments, medications, and general health questions. Always remind patients to consult with their healthcare provider for medical advice.',
-        'triage_nurse': 'You are a triage nurse AI assistant. Help assess patient needs and determine urgency. For medical emergencies, immediately direct patients to call 911 or go to the emergency room.',
-        'billing_specialist': 'You are a billing specialist AI assistant for a medical practice. Your role is to help patients with billing inquiries, account balances, payment options, insurance questions, and payment arrangements. IMPORTANT: If a patient asks about their account balance or billing information and you do not have that information in the conversation history, ask them to provide it or verify their information (such as account number, date of service, or patient name) so you can assist them. Do NOT say you cannot access data - instead, ask the patient for the information you need to help them. Use any information the patient shares in the conversation to provide personalized assistance.',
-        'collections_specialist': 'You are a collections specialist AI assistant. Help patients resolve outstanding balances with empathy and professionalism. You have access to the full conversation history, so use information shared by the patient in previous messages to provide personalized assistance.'
+        'front_desk': 'You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately. IMPORTANT: When a patient wants to book, schedule, or make an appointment, you MUST use the book_appointment function to create the appointment. Do not just confirm verbally - actually book it using the function. Always collect the patient\'s name, preferred date and time, appointment type (if specified), and contact information before booking.',
+        'medical_assistant': 'You are a medical assistant AI. Help patients with medication refill requests following safety protocols, explain lab test results using normal ranges, collect pre-visit intake information, and send preparation instructions. IMPORTANT: When a patient requests a medication refill, use the request_medication_refill function. When a patient asks about lab results, use the explain_lab_result function. When collecting intake information, use the start_intake_form or update_intake_form functions. When a patient needs prep instructions (like fasting before a blood test), use the send_prep_instructions function. Always remind patients to consult with their healthcare provider for medical advice.',
+        'triage_nurse': 'You are a triage nurse AI assistant. Help assess patient symptoms, determine urgency levels, and follow protocol-driven pathways. IMPORTANT: When a patient describes symptoms, use the assess_symptoms function to perform structured symptom assessment. For critical or emergent cases with red flags (chest pain, difficulty breathing, stroke symptoms, severe bleeding, unconsciousness), use the call_emergency_services function immediately. For urgent cases, use get_available_providers to help schedule appointments. Always document triage interactions using document_triage_in_emr after completing assessments. For medical emergencies, immediately direct patients to call 911 or go to the emergency room.',
+        'billing_specialist': 'You are a billing specialist AI assistant for a medical practice. Your role is to help patients with billing inquiries, account balances, payment options, insurance questions, and payment arrangements. IMPORTANT: When a patient asks about their statement or bill, use the explain_statement function. When a patient asks an insurance question, use the answer_insurance_question function. When a patient wants to make a payment, use the process_payment function. After a payment is processed, use the generate_payment_receipt function to send a receipt. If a patient asks about their account balance or billing information and you do not have that information in the conversation history, ask them to provide it or verify their information (such as account number, date of service, or patient name) so you can assist them. Do NOT say you cannot access data - instead, ask the patient for the information you need to help them. Use any information the patient shares in the conversation to provide personalized assistance.',
+        'collections_specialist': 'You are a collections specialist AI assistant. Help patients resolve outstanding balances with empathy and professionalism. IMPORTANT: When a patient has an overdue balance, use the send_overdue_balance_reminder function to send reminders. When a patient wants to set up a payment plan, use the negotiate_payment_plan function first, then create_payment_plan after terms are agreed. Before sending SMS or making automated calls, ensure you have consent using grant_communication_consent. If a patient requests to be on the Do Not Call list, use add_to_do_not_call_list. For severely overdue balances, use create_collections_case to send to collections. Always be empathetic and help patients find solutions. You have access to the full conversation history, so use information shared by the patient in previous messages to provide personalized assistance.'
       };
       
       // Normalize type to lowercase with underscore for matching (handles "Billing Specialist" -> "billing_specialist")
@@ -247,8 +308,36 @@ class AIService {
     if (context.patientName) {
       prompt += `\n\nCurrent patient: ${context.patientName}`;
     }
+    
+    // Add dynamic greeting context for front desk agents
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'front_desk') {
+      const greetingService = require('./greetingService');
+      const greetingContext = greetingService.buildGreetingContext(agentConfig);
+      prompt += `\n\nCurrent time greeting: ${greetingContext.timeGreeting}`;
+      prompt += `\n\nCurrent time: ${greetingContext.currentTime}`;
+      prompt += `\n\nWithin business hours: ${greetingContext.isWithinBusinessHours ? 'Yes' : 'No'}`;
+      prompt += `\n\nBusiness hours information:\n${greetingContext.businessHoursMessage}`;
+    }
+    
     if (context.businessHours) {
       prompt += `\n\nBusiness hours: ${JSON.stringify(context.businessHours)}`;
+    }
+
+    // Add FAQ context for front desk agents
+    if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'front_desk' && context.organizationId) {
+      try {
+        const faqService = require('./faqService');
+        const faqContext = await faqService.buildFAQContext(context.organizationId);
+        if (faqContext.faqAvailable) {
+          prompt += `\n\nFAQ Information (use this to answer common questions):`;
+          prompt += `\n\nBusiness Hours: ${faqContext.hours}`;
+          prompt += `\n\nDirections: ${faqContext.directions}`;
+          prompt += `\n\nServices: ${faqContext.services}`;
+        }
+      } catch (error) {
+        console.error('Error building FAQ context:', error);
+        // Don't fail if FAQ context fails
+      }
     }
 
     // Important: Tell the AI it has access to conversation history and how to handle missing data

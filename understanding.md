@@ -35,10 +35,10 @@ Helps with medication refill requests following safety rules, explains lab test 
 Triage Nurse Assistant
 Checks patient symptoms and decides how urgent the problem is, follows safety rules for different symptoms like sending chest pain cases to emergency, connects to doctor schedules, and saves notes in the patient's medical record.
 
-Billing Specialist (Coming Soon)
+Billing Specialist
 Will explain bills, answer insurance questions, take payments securely, and send payment receipts.
 
-Collections Specialist (Coming Soon)
+Collections Specialist
 Will send automatic reminders for unpaid bills, securely collect payments, help set up payment plans, and follow rules about calling patients.
 
 HOW IT'S BUILT

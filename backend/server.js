@@ -98,6 +98,9 @@ app.use(sanitizeInput);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve receipt PDFs
+app.use('/receipts', express.static(path.join(__dirname, 'receipts')));
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -131,6 +134,12 @@ app.use('/api/deliverables', require('./routes/deliverables'));
 app.use('/api/conversations', require('./routes/conversations'));
 app.use('/api/ai-status', require('./routes/ai-status'));
 app.use('/api/webchat', require('./routes/webchat'));
+app.use('/api/appointments', require('./routes/appointments'));
+app.use('/api/reminder-config', require('./routes/reminder-config'));
+app.use('/api/medical-assistant', require('./routes/medical-assistant'));
+app.use('/api/triage', require('./routes/triage'));
+app.use('/api/billing', require('./routes/billing'));
+app.use('/api/collections', require('./routes/collections'));
 
 // Health check
 app.get('/api/health', (req, res) => {

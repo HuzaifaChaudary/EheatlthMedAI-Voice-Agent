@@ -58,6 +58,15 @@ export default function ArchitecturePage() {
         { name: 'Report Templates', path: '/architecture/reports' },
         { name: 'Generated Reports', path: '/architecture/reports' }
       ]
+    },
+    {
+      name: 'Appointments & Reminders',
+      description: 'Appointment management and reminder configuration',
+      icon: '📅',
+      routes: [
+        { name: 'Appointments', path: '/appointments' },
+        { name: 'Reminder Configuration', path: '/architecture/reminders' }
+      ]
     }
   ]
 
