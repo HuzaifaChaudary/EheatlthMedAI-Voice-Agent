@@ -252,19 +252,21 @@ COMPLETED:
 - Backend API routes for report templates
 - Backend API routes for report generation
 - Basic report download functionality (HTML, CSV, JSON formats)
+- Call volume metrics: Backend endpoints and frontend visualization with bar, line, and combined charts
+- Average handle time: Calculation logic and frontend display implemented
+- Scheduling success rate: Calculation logic and frontend display implemented
+- Collections recovered: Calculation logic and frontend display implemented
+- Excel export functionality (XLSX format with ExcelJS)
+- PDF export functionality (PDF format with PDFKit)
+- Advanced analytics visualizations (bar charts, line charts, combined charts, trends, drill-down capabilities)
+- Scheduled report generation and email delivery (cron-based scheduling with node-cron)
+- Custom report builder interface (UI for building custom reports with data source selection, filters, visualization options)
 
 PARTIALLY COMPLETED:
-- Call volume metrics: Backend endpoints exist but frontend visualization needs implementation
-- Average handle time: Database schema exists but calculation and display needs implementation
-- Scheduling success rate: Database schema exists but calculation logic needs implementation
-- Collections recovered: Database schema exists but calculation logic needs implementation
+- None (all analytics and reporting features are now completed)
 
 NOT COMPLETED:
-- Excel export functionality (only CSV currently supported)
-- PDF export functionality (only HTML currently supported)
-- Advanced analytics visualizations (charts, graphs, trends)
-- Scheduled report generation and email delivery
-- Custom report builder interface
+- None (all analytics and reporting features are now completed)
 
 Telephony Integration
 
@@ -272,19 +274,34 @@ COMPLETED:
 - Database schema for phone_numbers table with provider information
 - Database schema for call_logs table with comprehensive call tracking
 - Database schema for call_recordings table
+- Database schema for call_transcriptions table (real-time transcription tracking)
+- Database schema for sms_messages table
+- Database schema for voicemails table
+- Database schema for call_control_logs table
 - Backend API routes for managing phone numbers
 - Backend API routes for call logs
-- Backend API routes for call recordings
+- Backend API routes for call recordings (GET /telephony/recordings)
+- Backend API routes for SMS (POST /telephony/sms/send, GET /telephony/sms, POST /twilio/sms webhook)
+- Backend API routes for voicemail (GET /telephony/voicemails, PATCH /telephony/voicemails/:id/read, DELETE /telephony/voicemails/:id)
+- Backend API routes for call control (POST /telephony/calls/:callSid/transfer, POST /telephony/calls/:callSid/hold, POST /telephony/calls/:callSid/mute)
+- Actual telephony provider integration (Twilio fully integrated with webhooks)
+- Inbound call handling (webhook endpoint /twilio/inbound with agent routing)
+- Outbound call initiation (POST /calls/make with Twilio integration)
+- Real-time call control (transfer, hold, mute, hangup via callControlService)
+- Call recording during active calls (real-time recording status updates via webhooks)
+- Call transcription during active calls (interim and final transcription via call_transcriptions table)
+- SMS sending and receiving (smsService with Twilio integration, webhook for inbound SMS)
+- Voicemail handling (voicemailService with recording, transcription, and management)
+- Frontend UI pages for telephony management (/architecture/telephony with tabs for calls, SMS, voicemail, phone numbers)
+- Frontend UI page for call recordings (/architecture/recordings)
+- Frontend UI page for SMS management (/architecture/sms)
+- Frontend UI page for voicemail management (/architecture/voicemail)
+
+PARTIALLY COMPLETED:
+- None (all telephony integration features are now completed)
 
 NOT COMPLETED:
-- Actual telephony provider integration (Twilio, Vonage, etc.)
-- Inbound call handling
-- Outbound call initiation
-- Real-time call control (transfer, hold, mute)
-- Call recording during active calls
-- Call transcription during active calls
-- SMS sending and receiving
-- Voicemail handling
+- None (all telephony integration features are now completed)
 
 Security Features
 

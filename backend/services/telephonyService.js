@@ -88,12 +88,18 @@ class TelephonyService {
         recordingChannels: 'dual', // Record both channels
         recordingStatusCallback: `${this.baseUrl}/api/telephony/twilio/recording-status`,
         recordingStatusCallbackMethod: 'POST',
-        recordingStatusCallbackEvent: ['completed'],
+        recordingStatusCallbackEvent: ['in-progress', 'completed'], // Real-time recording updates
+        // Enable real-time transcription (Twilio doesn't support real-time, but we can get interim results)
+        // Note: For true real-time transcription, use Twilio Media Streams API
+        // For now, we'll use post-call transcription with interim updates
         statusCallback: `${this.baseUrl}/api/telephony/twilio/status`,
         statusCallbackMethod: 'POST',
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         // Enable async for faster transcription
-        asyncAmd: 'true'
+        asyncAmd: 'true',
+        // Enable real-time transcription
+        machineDetection: 'Enable',
+        machineDetectionTimeout: 10
       });
 
       // Update call log with Twilio call SID
@@ -195,6 +201,18 @@ class TelephonyService {
       // For Twilio, use <Say> verb for now (can be enhanced with TTS audio URL)
       const twiml = new twilio.twiml.VoiceResponse();
       
+      // Enable recording during the call (real-time)
+      twiml.record({
+        action: `${this.baseUrl}/api/telephony/twilio/recording-status`,
+        method: 'POST',
+        recordingStatusCallback: `${this.baseUrl}/api/telephony/twilio/recording-status`,
+        recordingStatusCallbackMethod: 'POST',
+        recordingStatusCallbackEvent: ['in-progress', 'completed'],
+        transcribe: true,
+        transcribeCallback: `${this.baseUrl}/api/telephony/twilio/transcription`,
+        transcribeCallbackMethod: 'POST'
+      });
+      
       // Use <Say> verb for immediate text-to-speech
       // Note: For better quality, you can use <Play> with TTS audio URL
       twiml.say({
@@ -209,14 +227,17 @@ class TelephonyService {
       );
       const callLogId = callLogResult.rows[0]?.id || '';
 
-      // Gather user speech input
+      // Gather user speech input with real-time transcription
       twiml.gather({
         input: 'speech',
         action: `${this.baseUrl}/api/telephony/twilio/voice?conversationId=${conversationId}&callLogId=${callLogId}&agentId=${agentId}`,
         method: 'POST',
         speechTimeout: 'auto',
         language: 'en-US',
-        enhanced: true
+        enhanced: true,
+        // Enable real-time transcription during gather
+        transcribe: true,
+        transcribeCallback: `${this.baseUrl}/api/telephony/twilio/transcription`
       });
 
       return twiml.toString();

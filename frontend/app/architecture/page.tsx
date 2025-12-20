@@ -25,7 +25,10 @@ export default function ArchitecturePage() {
       routes: [
         { name: 'Voice AI Config', path: '/architecture/voice-ai' },
         { name: 'Consent Management', path: '/architecture/consent' },
-        { name: 'Call Recordings', path: '/architecture/recordings' }
+        { name: 'Telephony', path: '/architecture/telephony' },
+        { name: 'Call Recordings', path: '/architecture/recordings' },
+        { name: 'SMS', path: '/architecture/sms' },
+        { name: 'Voicemail', path: '/architecture/voicemail' }
       ]
     },
     {

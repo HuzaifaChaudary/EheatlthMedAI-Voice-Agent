@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const analyticsMetricsService = require('../services/analyticsMetricsService');
 const router = express.Router();
 
 // Get dashboard analytics
@@ -198,6 +199,11 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       dailyVolume = { rows: [] };
     }
 
+    // Calculate advanced metrics
+    const avgHandleTime = await analyticsMetricsService.calculateAverageHandleTime(orgId, start_date, end_date);
+    const schedulingSuccessRate = await analyticsMetricsService.calculateSchedulingSuccessRate(orgId, start_date, end_date);
+    const collectionsRecovered = await analyticsMetricsService.calculateCollectionsRecovered(orgId, start_date, end_date);
+
     res.json({
       call_stats: callStats.rows[0] || {
         total_calls: 0,
@@ -209,7 +215,10 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       },
       agent_performance: agentPerformance.rows || [],
       recent_calls: [],
-      daily_volume: dailyVolume.rows || []
+      daily_volume: dailyVolume.rows || [],
+      avg_handle_time: avgHandleTime,
+      scheduling_success_rate: schedulingSuccessRate,
+      collections_recovered: collectionsRecovered
     });
   } catch (error) {
     console.error('Error fetching analytics:', error);
@@ -224,7 +233,25 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       },
       agent_performance: [],
       recent_calls: [],
-      daily_volume: []
+      daily_volume: [],
+      avg_handle_time: {
+        avg_handle_time_seconds: 0,
+        avg_completed_handle_time_seconds: 0,
+        total_calls: 0,
+        completed_calls: 0,
+        avg_handle_time_formatted: '0s',
+        avg_completed_handle_time_formatted: '0s'
+      },
+      scheduling_success_rate: {
+        total_booking_attempts: 0,
+        successful_bookings: 0,
+        success_rate_percentage: 0
+      },
+      collections_recovered: {
+        total_recovered: 0,
+        total_payments: 0,
+        recovery_rate_percentage: 0
+      }
     });
   }
 });
@@ -237,42 +264,41 @@ router.get('/metrics', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
-    const { start_date, end_date, agent_id } = req.query;
+    const orgId = orgResult.rows[0]?.organization_id || null;
+    const { start_date, end_date, agent_id, period = 'daily' } = req.query;
 
-    let query = `
-      SELECT 
-        DATE(started_at) as date,
-        COUNT(*) as total_calls,
-        COUNT(*) FILTER (WHERE status = 'completed') as completed_calls,
-        AVG(duration_seconds) as avg_duration,
-        SUM(cost) as total_cost
-      FROM call_logs
-      WHERE organization_id = $1
-    `;
-    const params = [orgId];
+    const trends = await analyticsMetricsService.getCallVolumeTrends(orgId, start_date, end_date, period);
 
-    if (start_date) {
-      params.push(start_date);
-      query += ` AND started_at >= $${params.length}`;
-    }
-    if (end_date) {
-      params.push(end_date);
-      query += ` AND started_at <= $${params.length}`;
-    }
-    if (agent_id) {
-      params.push(agent_id);
-      query += ` AND agent_id = $${params.length}`;
-    }
-
-    query += ' GROUP BY DATE(started_at) ORDER BY date DESC';
-
-    const result = await db.query(query, params);
-
-    res.json({ metrics: result.rows });
+    res.json({ metrics: trends });
   } catch (error) {
     console.error('Error fetching metrics:', error);
-    res.status(500).json({ message: 'Error fetching metrics' });
+    res.status(500).json({ message: 'Error fetching metrics', error: error.message });
+  }
+});
+
+// Get advanced metrics
+router.get('/advanced-metrics', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0]?.organization_id || null;
+    const { start_date, end_date } = req.query;
+
+    const avgHandleTime = await analyticsMetricsService.calculateAverageHandleTime(orgId, start_date, end_date);
+    const schedulingSuccessRate = await analyticsMetricsService.calculateSchedulingSuccessRate(orgId, start_date, end_date);
+    const collectionsRecovered = await analyticsMetricsService.calculateCollectionsRecovered(orgId, start_date, end_date);
+
+    res.json({
+      avg_handle_time: avgHandleTime,
+      scheduling_success_rate: schedulingSuccessRate,
+      collections_recovered: collectionsRecovered
+    });
+  } catch (error) {
+    console.error('Error fetching advanced metrics:', error);
+    res.status(500).json({ message: 'Error fetching advanced metrics', error: error.message });
   }
 });
 

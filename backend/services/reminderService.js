@@ -87,18 +87,28 @@ class ReminderService {
       });
 
       // Get organization's phone number for sending
+      // Priority: 1. Organization config, 2. Environment variable, 3. First active phone number
       const config = await reminderConfigService.getConfig(organizationId);
-      const phoneResult = await db.query(
-        `SELECT phone_number FROM phone_numbers 
-         WHERE organization_id = $1 AND is_active = true 
-         LIMIT 1`,
-        [organizationId]
-      );
-
-      const fromNumber = config?.twilio_phone_number || phoneResult.rows[0]?.phone_number || process.env.TWILIO_PHONE_NUMBER;
+      
+      // First try organization config or environment variable (most reliable)
+      let fromNumber = config?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER;
+      
+      // If not set, try to find a real phone number from the database
+      if (!fromNumber) {
+        const phoneResult = await db.query(
+          `SELECT phone_number FROM phone_numbers 
+           WHERE organization_id = $1 AND is_active = true 
+           AND phone_number LIKE '+1%' 
+           AND LENGTH(phone_number) >= 11
+           ORDER BY id DESC
+           LIMIT 1`,
+          [organizationId]
+        );
+        fromNumber = phoneResult.rows[0]?.phone_number;
+      }
 
       if (!fromNumber) {
-        throw new Error('No phone number configured for sending SMS');
+        throw new Error('No phone number configured for sending SMS. Configure TWILIO_PHONE_NUMBER in environment or Reminder Configuration.');
       }
 
       // Compose reminder message

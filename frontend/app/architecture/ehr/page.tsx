@@ -226,10 +226,10 @@ export default function EHRSystemsPage() {
   const handleTestConnection = async (systemId: number) => {
     setTestingConnection(systemId)
     setTestResult(null)
-    
+
     try {
       const response = await get(`/integrations-ehr/ehr/${systemId}/test-connection`)
-      
+
       if (response.data?.success) {
         setTestResult({
           systemId,
@@ -258,11 +258,11 @@ export default function EHRSystemsPage() {
 
   const handleSyncNow = async (systemId: number) => {
     setSyncingSystem(systemId)
-    
+
     try {
       // Pull appointments as a sync operation - this will update last_sync_at
       const response = await get(`/integrations-ehr/ehr/${systemId}/pull/appointments`)
-      
+
       if (response.ok && response.data) {
         // Success - refresh to show updated last_sync_at
         await fetchEHRSystems()
@@ -293,31 +293,29 @@ export default function EHRSystemsPage() {
     }
   }
 
-  const availableConnectors = formData.connector_type === 'hl7' 
-    ? hl7Connectors 
+  const availableConnectors = formData.connector_type === 'hl7'
+    ? hl7Connectors
     : formData.connector_type === 'fhir'
-    ? fhirConnectors
-    : []
+      ? fhirConnectors
+      : []
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Link 
-            href="/architecture" 
-            className="text-slate-400 hover:text-white mb-4 inline-block transition-colors"
-          >
-            ← Back to Architecture
-          </Link>
-          <h1 className="text-4xl font-bold text-white mb-2">EHR Systems</h1>
-          <p className="text-slate-300">
-            Manage Electronic Health Record system integrations. Connect to Epic, Cerner, and other EHR platforms via HL7 or FHIR.
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950">
+      <header className="container mx-auto px-6 py-6 flex justify-between items-center bg-transparent">
+        <div className="flex items-center space-x-3">
+          <span className="text-xl font-semibold text-white">EHR Systems</span>
         </div>
+        <Link href="/architecture" className="text-white hover:text-slate-300 text-sm">
+          ← Architecture
+        </Link>
+      </header>
 
-        {/* Actions */}
+      <main className="container mx-auto px-6 py-8">
         <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-white">EHR Systems</h1>
+            <p className="text-slate-400 mt-2">Manage Electronic Health Record system integrations. Connect to Epic, Cerner, and other EHR platforms via HL7 or FHIR.</p>
+          </div>
           <div className="text-slate-300">
             {ehrSystems.length} {ehrSystems.length === 1 ? 'system' : 'systems'} configured
           </div>
@@ -387,11 +385,10 @@ export default function EHRSystemsPage() {
                 </div>
 
                 {testResult && testResult.systemId === system.id && (
-                  <div className={`mt-4 p-3 rounded-lg text-sm ${
-                    testResult.success 
+                  <div className={`mt-4 p-3 rounded-lg text-sm ${testResult.success
                       ? 'bg-green-500/20 border border-green-500/50 text-green-300'
                       : 'bg-red-500/20 border border-red-500/50 text-red-300'
-                  }`}>
+                    }`}>
                     {testResult.message}
                   </div>
                 )}
@@ -664,7 +661,7 @@ export default function EHRSystemsPage() {
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

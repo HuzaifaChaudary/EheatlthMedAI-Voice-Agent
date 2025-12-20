@@ -6,6 +6,10 @@ import Link from 'next/link'
 import Logo from '../../components/Logo'
 import { isAuthenticated, clearAuth, sessionManager, tokenManager } from '@/lib/auth'
 import { get } from '@/lib/api'
+import { useSocket } from '@/components/providers/SocketProvider'
+import { AnalyticsChart } from '@/components/charts/AnalyticsChart'
+import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
+import { Activity, Users, PhoneCall, AlertTriangle } from 'lucide-react'
 
 interface Agent {
   id: number
@@ -17,9 +21,52 @@ interface Agent {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { socket, isConnected } = useSocket()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+
+  // Real-time stats state
+  const [stats, setStats] = useState({
+    activeCalls: 0,
+    totalAgents: 0,
+    activeAgents: 0,
+    incidents: 0
+  })
+
+  // Mock chart data
+  const [chartData, setChartData] = useState([
+    { name: '00:00', calls: 40 },
+    { name: '04:00', calls: 30 },
+    { name: '08:00', calls: 20 },
+    { name: '12:00', calls: 27 },
+    { name: '16:00', calls: 18 },
+    { name: '20:00', calls: 23 },
+    { name: '23:59', calls: 34 },
+  ])
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('dashboard:update', (data) => {
+        console.log('Received dashboard update:', data);
+        if (data.stats) setStats(prev => ({ ...prev, ...data.stats }));
+        if (data.chart) setChartData(data.chart);
+      });
+
+      socket.on('agent:status_change', (data) => {
+        setAgents(prev => prev.map(agent =>
+          agent.id === data.agentId ? { ...agent, is_active: data.isActive } : agent
+        ));
+      });
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('dashboard:update');
+        socket.off('agent:status_change');
+      }
+    };
+  }, [socket]);
 
   useEffect(() => {
     // Check if we just logged in (need to wait longer for token to be available)
@@ -28,19 +75,19 @@ export default function DashboardPage() {
       sessionStorage.removeItem('just_logged_in') // Clear flag
       console.log('🔐 Just logged in, waiting longer for token to be available...')
     }
-    
+
     // Check authentication - give it more attempts if we just logged in
     let attempts = 0
     const maxAttempts = justLoggedIn ? 10 : 5  // More attempts if just logged in
     let redirectAttempted = false
     const initialDelay = justLoggedIn ? 500 : 100  // Longer delay if just logged in
-    
+
     const checkAuth = () => {
       attempts++
       const isAuth = isAuthenticated()
-      
+
       console.log(`🔍 Auth check attempt ${attempts}/${maxAttempts}:`, isAuth ? '✅ Authenticated' : '❌ Not authenticated')
-      
+
       if (isAuth) {
         console.log('✅ Authentication verified, loading dashboard...')
         // Fetch data in parallel
@@ -56,12 +103,12 @@ export default function DashboardPage() {
         if (!redirectAttempted) {
           redirectAttempted = true
           console.warn('❌ Authentication failed after multiple attempts, redirecting to login')
-          
+
           // Double-check token before redirecting
           const token = tokenManager.getToken()
           const session = sessionManager.getSession()
           console.log('🔍 Final check - Token:', token ? 'Present' : 'Missing', 'Session:', session ? 'Present' : 'Missing')
-          
+
           if (!token && !session) {
             // Use window.location for a hard redirect to prevent loops
             window.location.href = '/login?error=session_expired'
@@ -112,7 +159,7 @@ export default function DashboardPage() {
       // Fetch fresh user data from API (don't block on this)
       try {
         const response = await get('/users/me')
-        
+
         if (response.error) {
           console.error('❌ Error fetching user:', response.error)
           // Only redirect if it's an auth error, otherwise use session data
@@ -149,7 +196,7 @@ export default function DashboardPage() {
   const fetchAgents = async () => {
     try {
       const response = await get('/agents')
-      
+
       if (response.error) {
         console.error('❌ Error fetching agents:', response.error)
         // Don't redirect on agent fetch errors - just show empty list
@@ -160,6 +207,12 @@ export default function DashboardPage() {
         setAgents([])
       } else if (response.data?.agents) {
         setAgents(response.data.agents)
+        // Update stats based on fetched agents
+        setStats(prev => ({
+          ...prev,
+          totalAgents: response.data.agents.length,
+          activeAgents: response.data.agents.filter((a: Agent) => a.is_active).length
+        }))
       } else {
         setAgents([])
       }
@@ -229,6 +282,10 @@ export default function DashboardPage() {
           <Logo size="md" showText={true} />
         </Link>
         <div className="flex items-center space-x-6">
+          <div className="hidden md:flex items-center space-x-2 mr-4">
+            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            <span className="text-slate-400 text-xs">{isConnected ? 'Connected' : 'Disconnected'}</span>
+          </div>
           {user && (
             <span className="text-white text-sm">
               {user.first_name} {user.last_name}
@@ -258,6 +315,70 @@ export default function DashboardPage() {
           <p className="text-slate-300">
             Manage your AI Voice Agents and monitor activity
           </p>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <DashboardStatCard
+            title="Active Calls"
+            value={stats.activeCalls}
+            icon={PhoneCall}
+            description="Calls in progress"
+            className="bg-white/10 border-white/20 text-white"
+          />
+          <DashboardStatCard
+            title="Active Agents"
+            value={stats.activeAgents}
+            icon={Activity}
+            description="Agents online"
+            className="bg-white/10 border-white/20 text-white"
+          />
+          <DashboardStatCard
+            title="Total Agents"
+            value={stats.totalAgents}
+            icon={Users}
+            description="Configured agents"
+            className="bg-white/10 border-white/20 text-white"
+          />
+          <DashboardStatCard
+            title="Incidents"
+            value={stats.incidents}
+            icon={AlertTriangle}
+            description="Security alerts (24h)"
+            className="bg-white/10 border-white/20 text-white"
+            trend={stats.incidents > 0 ? { value: stats.incidents, label: 'New', positive: false } : undefined}
+          />
+        </div>
+
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2">
+            <AnalyticsChart
+              title="Call Volume (24h)"
+              data={chartData}
+              type="line"
+              dataKey="calls"
+              categoryKey="name"
+              color="#0d9488" // Teal-600
+            />
+          </div>
+          <div>
+            {/* Quick Actions or Secondary Chart could go here */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 h-full">
+              <h3 className="text-white font-semibold mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <Link href="/dashboard/agents/new" className="block w-full text-center bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg transition-colors">
+                  Create New Agent
+                </Link>
+                <Link href="/dashboard/reports" className="block w-full text-center bg-white/5 hover:bg-white/10 text-white border border-white/10 py-2 rounded-lg transition-colors">
+                  View Reports
+                </Link>
+                <Link href="/dashboard/settings" className="block w-full text-center bg-white/5 hover:bg-white/10 text-white border border-white/10 py-2 rounded-lg transition-colors">
+                  Settings
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Quick Links */}
@@ -402,50 +523,64 @@ export default function DashboardPage() {
               </div>
             </div>
           </Link>
-        <Link
-          href="/appointments"
-          className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
-        >
-          <div className="flex items-center space-x-3">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <div>
-              <h3 className="text-white font-semibold">Appointments</h3>
-              <p className="text-slate-300 text-sm">Manage patient appointments</p>
+          <Link
+            href="/appointments"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <div>
+                <h3 className="text-white font-semibold">Appointments</h3>
+                <p className="text-slate-300 text-sm">Manage patient appointments</p>
+              </div>
             </div>
-          </div>
-        </Link>
+          </Link>
 
-        <Link
-          href="/billing"
-          className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
-        >
-          <div className="flex items-center space-x-3">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <div>
-              <h3 className="text-white font-semibold">Billing</h3>
-              <p className="text-slate-300 text-sm">Manage statements, payments, and receipts</p>
+          <Link
+            href="/billing"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div>
+                <h3 className="text-white font-semibold">Billing</h3>
+                <p className="text-slate-300 text-sm">Manage statements, payments, and receipts</p>
+              </div>
             </div>
-          </div>
-        </Link>
+          </Link>
 
-        <Link
-          href="/collections"
-          className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
-        >
-          <div className="flex items-center space-x-3">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <h3 className="text-white font-semibold">Collections</h3>
-              <p className="text-slate-300 text-sm">Manage payment plans, reminders, and compliance</p>
+          <Link
+            href="/collections"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <h3 className="text-white font-semibold">Collections</h3>
+                <p className="text-slate-300 text-sm">Manage payment plans, reminders, and compliance</p>
+              </div>
             </div>
-          </div>
-        </Link>
+          </Link>
+          <Link
+            href="/architecture/telephony"
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <div>
+                <h3 className="text-white font-semibold">Telephony</h3>
+                <p className="text-slate-300 text-sm">Manage calls, SMS, and voicemail</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Agents Grid */}
@@ -458,11 +593,10 @@ export default function DashboardPage() {
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-xl font-bold text-white">{agent.name}</h3>
                 <span
-                  className={`px-2 py-1 rounded text-xs font-semibold ${
-                    agent.is_active
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-500 text-white'
-                  }`}
+                  className={`px-2 py-1 rounded text-xs font-semibold ${agent.is_active
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-500 text-white'
+                    }`}
                 >
                   {agent.is_active ? 'Active' : 'Inactive'}
                 </span>
@@ -473,7 +607,7 @@ export default function DashboardPage() {
                   {agent.type}
                 </span>
                 <Link
-                  href={`/architecture/voice-ai?agent=${agent.id}`}
+                  href={`/dashboard/agents/${agent.id}`}
                   className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-block"
                 >
                   Configure

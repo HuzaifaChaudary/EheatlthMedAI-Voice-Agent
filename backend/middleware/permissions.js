@@ -15,7 +15,7 @@ const requireRole = (...roles) => {
     }
 
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         message: `Access denied. Required role: ${roles.join(' or ')}`,
         required_roles: roles,
         user_role: req.user.role
@@ -51,7 +51,7 @@ const requirePermission = (resource, action) => {
       );
 
       if (permissionResult.rows.length === 0) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: `Permission denied: ${action} on ${resource}`,
           required_permission: `${resource}:${action}`,
           user_role: req.user.role
@@ -105,7 +105,7 @@ const requireOrganizationAccess = (resourceTable, resourceIdParam = 'id') => {
 
       // Check access: user org must match resource org, or both must be null
       if (userOrgId !== resourceOrgId && !(userOrgId === null && resourceOrgId === null)) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Access denied. Resource belongs to a different organization.',
           user_organization_id: userOrgId,
           resource_organization_id: resourceOrgId
@@ -124,48 +124,29 @@ const requireOrganizationAccess = (resourceTable, resourceIdParam = 'id') => {
  * Optional: Check custom access policies
  * Queries the access_policies table for custom rules
  */
+/**
+ * Optional: Check custom access policies
+ * Queries the access_policies table for custom rules
+ * Now uses the centralized policy enforcement logic
+ */
 const checkAccessPolicy = async (req, resourceType, resourceId = null) => {
   try {
+    const policyEnforcement = require('./policyEnforcement');
+
     if (!req.user) {
       return { allowed: false, reason: 'Authentication required' };
     }
 
-    // Admin bypass
-    if (req.user.role === 'admin') {
-      return { allowed: true };
-    }
-
-    // Get user's organization_id
-    const userResult = await db.query(
-      'SELECT organization_id FROM users WHERE id = $1',
-      [req.user.id]
-    );
-    const userOrgId = userResult.rows[0]?.organization_id;
-
-    // Check for matching access policies
-    const policyResult = await db.query(
-      `SELECT * FROM access_policies 
-       WHERE resource_type = $1 
-       AND (resource_id = $2 OR resource_id IS NULL)
-       AND (role = $3 OR role IS NULL)
-       AND (organization_id = $4 OR organization_id IS NULL)
-       AND is_active = true
-       ORDER BY 
-         CASE WHEN role IS NOT NULL THEN 1 ELSE 2 END,
-         CASE WHEN resource_id IS NOT NULL THEN 1 ELSE 2 END,
-         CASE WHEN organization_id IS NOT NULL THEN 1 ELSE 2 END
-       LIMIT 1`,
-      [resourceType, resourceId, req.user.role, userOrgId]
+    const { allowed, reason, policy } = await policyEnforcement.checkAccess(
+      req.user.id,
+      req.user.role,
+      req.user.organization_id,
+      resourceType,
+      resourceId,
+      req.method === 'GET' ? 'read' : 'write' // Default action based on method
     );
 
-    if (policyResult.rows.length > 0) {
-      const policy = policyResult.rows[0];
-      // Policy exists and is active - access allowed
-      return { allowed: true, policy: policy };
-    }
-
-    // No explicit policy - default deny
-    return { allowed: false, reason: 'No access policy found' };
+    return { allowed, reason, policy: policy ? { name: policy } : null };
   } catch (error) {
     console.error('Access policy check error:', error);
     return { allowed: false, reason: 'Error checking access policy' };

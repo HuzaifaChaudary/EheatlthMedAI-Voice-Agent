@@ -16,7 +16,7 @@ const corsOptions = {
   origin: function (origin, callback) {
     // In development, allow all origins for easier debugging
     const isDevelopment = process.env.NODE_ENV !== 'production';
-    
+
     // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) {
       if (isDevelopment) {
@@ -24,11 +24,11 @@ const corsOptions = {
       }
       return callback(null, true);
     }
-    
+
     if (isDevelopment) {
       console.log(`🌐 CORS: Checking origin: ${origin}`);
     }
-    
+
     // Allow localhost in any form (http://localhost, http://localhost:3000, etc.)
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
       if (isDevelopment) {
@@ -36,7 +36,7 @@ const corsOptions = {
       }
       return callback(null, true);
     }
-    
+
     // Allow all Vercel deployments
     if (origin.endsWith('.vercel.app')) {
       if (isDevelopment) {
@@ -44,25 +44,25 @@ const corsOptions = {
       }
       return callback(null, true);
     }
-    
+
     // Allow specific origins from env
-    const allowedOrigins = process.env.CORS_ORIGIN 
+    const allowedOrigins = process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
       : [];
-    
+
     if (allowedOrigins.includes(origin)) {
       if (isDevelopment) {
         console.log('✅ CORS: Allowing origin from env');
       }
       return callback(null, true);
     }
-    
+
     // In development, allow all origins as fallback
     if (isDevelopment) {
       console.log(`⚠️ CORS: Allowing unknown origin in development: ${origin}`);
       return callback(null, true);
     }
-    
+
     console.log(`❌ CORS: Blocking origin: ${origin}`);
     callback(new Error(`Not allowed by CORS: ${origin}`));
   },
@@ -90,7 +90,14 @@ app.options('*', cors(corsOptions)); // Handle preflight
 
 // Security middleware
 const { helmetConfig, apiLimiter, sanitizeInput } = require('./middleware/security');
+const { checkIPBlock, detectSuspiciousRequests } = require('./middleware/ipBlockCheck');
+
 app.use(helmetConfig);
+// Global IP block check - runs before rate limiting to save resources
+app.use(checkIPBlock);
+// Detect suspicious requests globally
+app.use(detectSuspiciousRequests);
+
 app.use(apiLimiter);
 app.use(sanitizeInput);
 
@@ -100,6 +107,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve receipt PDFs
 app.use('/receipts', express.static(path.join(__dirname, 'receipts')));
+// Serve static files for uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -109,6 +118,7 @@ app.use((req, res, next) => {
 
 // Routes with rate limiting
 const { authLimiter, sensitiveOperationLimiter } = require('./middleware/security');
+const { authenticateToken } = require('./middleware/auth'); // Added this line
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/users', require('./routes/users'));
@@ -143,8 +153,8 @@ app.use('/api/collections', require('./routes/collections'));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'EHealth Med AI API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
@@ -153,7 +163,7 @@ app.get('/api/health', (req, res) => {
 
 // Root route
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'EHealth Med AI API',
     version: '1.0.0',
     endpoints: {
@@ -169,25 +179,25 @@ app.use((err, req, res, next) => {
   // Handle CORS errors
   if (err.message && err.message.includes('CORS')) {
     console.error('CORS Error:', err.message);
-    return res.status(403).json({ 
+    return res.status(403).json({
       error: 'CORS error',
       message: err.message,
       origin: req.headers.origin || 'unknown'
     });
   }
-  
+
   console.error('Error:', err.stack);
-  res.status(err.status || 500).json({ 
-    message: err.message || 'Something went wrong!', 
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+  res.status(err.status || 500).json({
+    message: err.message || 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     message: 'Endpoint not found',
-    path: req.path 
+    path: req.path
   });
 });
 
@@ -198,14 +208,14 @@ function parseSQLStatements(sql) {
   const statements = [];
   let current = '';
   const lines = sql.split('\n');
-  
+
   for (const line of lines) {
     const trimmed = line.trim();
     // Skip comments and empty lines
     if (!trimmed || trimmed.startsWith('--')) continue;
-    
+
     current += line + '\n';
-    
+
     // End of statement
     if (trimmed.endsWith(';')) {
       const statement = current.trim();
@@ -215,7 +225,7 @@ function parseSQLStatements(sql) {
       current = '';
     }
   }
-  
+
   return statements;
 }
 
@@ -225,7 +235,7 @@ function parseSQLStatements(sql) {
 async function initializeDatabase() {
   try {
     console.log('🔍 Checking database...');
-    
+
     // Check if users table exists
     const tableCheck = await db.query(`
       SELECT EXISTS (
@@ -234,16 +244,16 @@ async function initializeDatabase() {
         AND table_name = 'users'
       );
     `);
-    
+
     if (!tableCheck.rows[0].exists) {
       console.log('⚠️  Database tables not found. Running migrations...');
-      
+
       // Run db.sql
       if (fs.existsSync(path.join(__dirname, 'config', 'db.sql'))) {
         console.log('📝 Running db.sql...');
         const schema = fs.readFileSync(path.join(__dirname, 'config', 'db.sql'), 'utf8');
         const statements = parseSQLStatements(schema);
-        
+
         for (let i = 0; i < statements.length; i++) {
           try {
             await db.query(statements[i]);
@@ -255,13 +265,13 @@ async function initializeDatabase() {
         }
         console.log(`✅ db.sql completed (${statements.length} statements)`);
       }
-      
+
       // Run db-updates.sql
       if (fs.existsSync(path.join(__dirname, 'config', 'db-updates.sql'))) {
         console.log('📝 Running db-updates.sql...');
         const updates = fs.readFileSync(path.join(__dirname, 'config', 'db-updates.sql'), 'utf8');
         const statements = parseSQLStatements(updates);
-        
+
         for (let i = 0; i < statements.length; i++) {
           try {
             await db.query(statements[i]);
@@ -273,22 +283,56 @@ async function initializeDatabase() {
         }
         console.log(`✅ db-updates.sql completed (${statements.length} statements)`);
       }
-      
+
+      // Run security-incidents-schema.sql
+      if (fs.existsSync(path.join(__dirname, 'config', 'security-incidents-schema.sql'))) {
+        console.log('📝 Running security-incidents-schema.sql...');
+        const securitySchema = fs.readFileSync(path.join(__dirname, 'config', 'security-incidents-schema.sql'), 'utf8');
+        const statements = parseSQLStatements(securitySchema);
+
+        for (let i = 0; i < statements.length; i++) {
+          try {
+            await db.query(statements[i]);
+          } catch (err) {
+            if (!err.message.includes('already exists')) {
+              console.error(`  ✗ Statement ${i + 1} failed:`, err.message);
+            }
+          }
+        }
+        console.log(`✅ security-incidents-schema.sql completed (${statements.length} statements)`);
+      }
+
       console.log('✅ Database initialization completed!');
     } else {
       console.log('✅ Database tables exist');
-      
+
       // Run updates anyway (they have IF NOT EXISTS checks)
       if (fs.existsSync(path.join(__dirname, 'config', 'db-updates.sql'))) {
         console.log('📝 Running db-updates.sql...');
         const updates = fs.readFileSync(path.join(__dirname, 'config', 'db-updates.sql'), 'utf8');
         const statements = parseSQLStatements(updates);
-        
+
         for (const statement of statements) {
           try {
             await db.query(statement);
           } catch (err) {
-            // Silently ignore "already exists" errors
+            if (!err.message.includes('already exists')) {
+              console.error('  ✗ Error:', err.message);
+            }
+          }
+        }
+      }
+
+      // Run security-incidents-schema.sql updates
+      if (fs.existsSync(path.join(__dirname, 'config', 'security-incidents-schema.sql'))) {
+        console.log('📝 Checking security-incidents-schema.sql...');
+        const securitySchema = fs.readFileSync(path.join(__dirname, 'config', 'security-incidents-schema.sql'), 'utf8');
+        const statements = parseSQLStatements(securitySchema);
+
+        for (const statement of statements) {
+          try {
+            await db.query(statement);
+          } catch (err) {
             if (!err.message.includes('already exists')) {
               console.error('  ✗ Error:', err.message);
             }
@@ -296,7 +340,7 @@ async function initializeDatabase() {
         }
       }
     }
-    
+
     // List tables
     const tables = await db.query(`
       SELECT table_name 
@@ -304,9 +348,9 @@ async function initializeDatabase() {
       WHERE table_schema = 'public'
       ORDER BY table_name;
     `);
-    
+
     console.log('📋 Database tables:', tables.rows.map(r => r.table_name).join(', '));
-    
+
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
     console.error('⚠️  Server will start but database may not be ready');
@@ -320,19 +364,32 @@ async function startServer() {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`⏰ Started at: ${new Date().toISOString()}`);
   console.log('═'.repeat(50));
-  
+
   // Initialize database
   await initializeDatabase();
-  
+
   // Test database connection
   try {
     const result = await db.query('SELECT NOW() as time, version() as version');
-    console.log('✅ Database connected successfully');
+
+    // Run integrations schema
+    const integrationsSchema = fs.readFileSync(path.join(__dirname, 'config', 'integrations-schema.sql'), 'utf8');
+    await db.query(integrationsSchema);
+    console.log('Integrations schema checked/updated');
+
+    // Start HL7 Listener (Default port 7777)
+    // In production, port might be configurable or fetched from DB config
+    const hl7Service = require('./services/hl7Service');
+    try {
+      hl7Service.startServer(process.env.HL7_PORT || 7777, db);
+    } catch (hl7Error) {
+      console.error('Failed to start HL7 Server:', hl7Error);
+    }
     console.log('⏰ Database time:', result.rows[0].time);
   } catch (error) {
     console.error('❌ Database connection error:', error.message);
   }
-  
+
   // Start scheduled tasks (only in production or if enabled)
   if (process.env.ENABLE_SCHEDULER === 'true' || process.env.NODE_ENV === 'production') {
     try {
@@ -343,7 +400,7 @@ async function startServer() {
       console.error('⚠️  Failed to start scheduler:', error.message);
     }
   }
-  
+
   console.log('═'.repeat(50));
   console.log('✨ Server ready to accept requests');
   console.log('═'.repeat(50));

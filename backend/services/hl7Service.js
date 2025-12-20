@@ -85,8 +85,8 @@ class HL7Service {
    */
   generateMessage(messageData) {
     try {
-      const { messageType, messageControlId, sendingApplication, sendingFacility, 
-              receivingApplication, receivingFacility, version, segments } = messageData;
+      const { messageType, messageControlId, sendingApplication, sendingFacility,
+        receivingApplication, receivingFacility, version, segments } = messageData;
 
       // Generate MSH segment
       const mshFields = [
@@ -131,7 +131,7 @@ class HL7Service {
         segmentFields.push('');
       } else if (field.components) {
         segmentFields.push(
-          field.components.map(comp => 
+          field.components.map(comp =>
             Array.isArray(comp) ? comp.join(this.repetitionDelimiter) : comp
           ).join(this.componentDelimiter)
         );
@@ -149,8 +149,8 @@ class HL7Service {
    * Generate HL7 ADT (Admit/Discharge/Transfer) message for appointment
    */
   generateADTMessage(appointmentData) {
-    const { patientName, patientId, dob, gender, appointmentDate, appointmentType, 
-            sendingFacility, receivingFacility } = appointmentData;
+    const { patientName, patientId, dob, gender, appointmentDate, appointmentType,
+      sendingFacility, receivingFacility } = appointmentData;
 
     const messageControlId = this.generateControlId();
     const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
@@ -348,7 +348,149 @@ class HL7Service {
       throw new Error(`Failed to send HL7 message: ${error.message}`);
     }
   }
+
+  /**
+   * Start HL7 TCP Listener (MLLP)
+   */
+  startServer(port = 7777, dbInstance) {
+    const net = require('net');
+
+    const server = net.createServer((socket) => {
+      console.log('HL7 Client connected:', socket.remoteAddress);
+
+      let buffer = '';
+      const START_BLOCK = 0x0B;
+      const END_BLOCK = 0x1C;
+      const CR = 0x0D;
+
+      socket.on('data', async (data) => {
+        buffer += data.toString();
+
+        // Simple MLLP parser
+        // Look for Start Block
+        const startIndex = buffer.indexOf(String.fromCharCode(START_BLOCK));
+        // Look for End Block + CR
+        const endIndex = buffer.indexOf(String.fromCharCode(END_BLOCK) + String.fromCharCode(CR));
+
+        if (startIndex !== -1 && endIndex !== -1) {
+          const rawMessage = buffer.substring(startIndex + 1, endIndex);
+          // Remove processed message from buffer
+          buffer = buffer.substring(endIndex + 2);
+
+          try {
+            console.log('Received HL7 Message:', rawMessage.substring(0, 50) + '...');
+
+            // Parse
+            const parsed = this.parseMessage(rawMessage);
+
+            // Process (Router)
+            let ackCode = 'AA'; // Application Accept
+            let ackMsg = 'Message processed successfully';
+
+            try {
+              if (parsed.messageType.includes('ADT')) {
+                await this.processADT(parsed, dbInstance);
+              } else if (parsed.messageType.includes('SIU')) {
+                await this.processSIU(parsed, dbInstance);
+              }
+            } catch (procError) {
+              console.error('HL7 Processing Error:', procError);
+              ackCode = 'AE'; // Application Error
+              ackMsg = procError.message;
+            }
+
+            // Send ACK
+            const ack = this.generateACK(parsed, ackCode, ackMsg);
+            const mllpAck = String.fromCharCode(START_BLOCK) + ack + String.fromCharCode(END_BLOCK) + String.fromCharCode(CR);
+            socket.write(mllpAck);
+
+          } catch (e) {
+            console.error('HL7 Parse/Ack Error:', e);
+          }
+        }
+      });
+
+      socket.on('error', (err) => {
+        console.error('HL7 Socket Error:', err);
+      });
+    });
+
+    server.listen(port, () => {
+      console.log(`HL7 Listener started on port ${port}`);
+    });
+
+    this.server = server;
+  }
+
+  /**
+   * Generate ACK Message
+   */
+  generateACK(originalParsed, ackCode, textMessage) {
+    const msh = originalParsed.segments.find(s => s.name === 'MSH');
+    const controlId = msh ? msh.fields[9] : 'UNKNOWN';
+    const senderApp = msh ? msh.fields[2] : 'UNKNOWN';
+    const senderFacility = msh ? msh.fields[3] : 'UNKNOWN';
+
+    // Swap sender/receiver for ACK
+    return this.generateMessage({
+      messageType: 'ACK',
+      messageControlId: `ACK${Date.now()}`,
+      sendingApplication: 'EHEALTH_MED_AI',
+      sendingFacility: 'EHEALTH',
+      receivingApplication: senderApp,
+      receivingFacility: senderFacility,
+      segments: [
+        {
+          name: 'MSA',
+          fields: [
+            { value: ackCode },
+            { value: controlId },
+            { value: textMessage }
+          ]
+        }
+      ]
+    });
+  }
+
+  /**
+   * Process ADT Message (Admit/Register)
+   * Create or update patient in DB
+   */
+  async processADT(parsed, db) {
+    if (!db) return; // Guard if DB not passed
+
+    const pid = parsed.segments.find(s => s.name === 'PID');
+    if (!pid) throw new Error('No PID segment found');
+
+    // Extract basic fields (indexes are 0-based in array, but HL7 is 1-based, we parsed them into fields array)
+    // PID-3 = ID List, PID-5 = Name, PID-7 = DOB, PID-8 = Sex
+
+    // Helper to safely get value from parsed structure
+    const getVal = (idx) => pid.fields[idx] ? (pid.fields[idx].value || (pid.fields[idx].components ? pid.fields[idx].components[0][0] : '')) : '';
+    const getComp = (idx, cIdx) => pid.fields[idx] && pid.fields[idx].components && pid.fields[idx].components[cIdx] ? pid.fields[idx].components[cIdx][0] : '';
+
+    // Name often in PID-5: Family^Given
+    const lastName = getComp(4, 0); // PID-5.1
+    const firstName = getComp(4, 1); // PID-5.2
+
+    const externalId = getVal(2); // PID-3 (Internal ID usually here in some systems, or PID-2)
+    const dob = getVal(6); // PID-7
+    const phone = getVal(12) || getComp(12, 0); // PID-13
+
+    console.log(`Processing ADT for ${firstName} ${lastName}`);
+
+    // Upsert logic would go here
+    // await db.query(...)
+  }
+
+  /**
+   * Process SIU Message (Scheduling)
+   */
+  async processSIU(parsed, db) {
+    console.log('Processing SIU (Appointment) message');
+    // Implementation for appointments
+  }
+
 }
 
 module.exports = new HL7Service();
-

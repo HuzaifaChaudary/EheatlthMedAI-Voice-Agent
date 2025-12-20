@@ -57,6 +57,35 @@ class AppointmentBookingService {
 
       const appointment = result.rows[0];
 
+      // Sync to external scheduling systems if configured
+      try {
+        const appointmentSyncService = require('./appointmentSyncService');
+        const integrationsResult = await db.query(
+          `SELECT id FROM integrations 
+           WHERE organization_id = $1 
+           AND provider IN ('google_calendar', 'zocdoc', 'calendly')
+           AND is_active = true
+           ORDER BY CASE provider WHEN 'google_calendar' THEN 1 ELSE 2 END
+           LIMIT 1`,
+          [organizationId]
+        );
+
+        // Sync to first active scheduling integration
+        if (integrationsResult.rows.length > 0) {
+          const integrationId = integrationsResult.rows[0].id;
+          try {
+            await appointmentSyncService.syncAppointment(appointment.id, integrationId, organizationId);
+            console.log(`Appointment ${appointment.id} synced to scheduling system`);
+          } catch (syncError) {
+            console.error('Error syncing appointment to scheduling system:', syncError);
+            // Don't fail appointment creation if sync fails
+          }
+        }
+      } catch (syncError) {
+        console.error('Error checking for scheduling integrations:', syncError);
+        // Don't fail appointment creation if sync check fails
+      }
+
       // Trigger webhook event
       try {
         const webhookService = require('./webhookService');
@@ -182,7 +211,7 @@ class AppointmentBookingService {
           };
 
           const appointment = await this.bookAppointment(conversationId, appointmentData, organizationId);
-          
+
           return {
             success: true,
             message: `Appointment successfully booked for ${appointmentData.patient_name} on ${new Date(appointmentData.appointment_date).toLocaleDateString('en-US', {
@@ -226,7 +255,7 @@ class AppointmentBookingService {
             };
           }
 
-          const updateNotes = args.reason 
+          const updateNotes = args.reason
             ? `${appointmentCheck.rows[0].notes || ''}\n[Rescheduled: ${args.reason}]`.trim()
             : appointmentCheck.rows[0].notes;
 

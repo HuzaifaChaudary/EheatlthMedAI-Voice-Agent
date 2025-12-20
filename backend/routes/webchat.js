@@ -141,6 +141,24 @@ router.post('/message', async (req, res) => {
     }
 
     const agent = agentResult.rows[0];
+    
+    // Get organization_id from agent or conversation metadata
+    let orgId = agent.organization_id;
+    if (!orgId && conversation.metadata) {
+      try {
+        const metadata = typeof conversation.metadata === 'string' 
+          ? JSON.parse(conversation.metadata) 
+          : conversation.metadata;
+        orgId = metadata.organization_id;
+      } catch (error) {
+        console.error('Error parsing conversation metadata:', error);
+      }
+    }
+    
+    // Fallback: try to get from conversation's organization_id if it exists
+    if (!orgId && conversation.organization_id) {
+      orgId = conversation.organization_id;
+    }
 
     // Get NLU configuration (if table exists)
     let nluConfig = {};

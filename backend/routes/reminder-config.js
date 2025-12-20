@@ -165,39 +165,91 @@ router.put('/', authenticateToken, requireRole('admin'), async (req, res) => {
 
     if (existingResult.rows.length > 0) {
       // Update existing config
-      const result = await db.query(
-        `UPDATE reminder_configurations SET
-          twilio_account_sid = COALESCE($1, twilio_account_sid),
-          twilio_auth_token_encrypted = COALESCE($2, twilio_auth_token_encrypted),
-          twilio_phone_number = COALESCE($3, twilio_phone_number),
-          twilio_enabled = COALESCE($4, twilio_enabled),
-          smtp_host = COALESCE($5, smtp_host),
-          smtp_port = COALESCE($6, smtp_port),
-          smtp_secure = COALESCE($7, smtp_secure),
-          smtp_user = COALESCE($8, smtp_user),
-          smtp_password_encrypted = COALESCE($9, smtp_password_encrypted),
-          smtp_from_name = COALESCE($10, smtp_from_name),
-          smtp_from_email = COALESCE($11, smtp_from_email),
-          smtp_enabled = COALESCE($12, smtp_enabled),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE organization_id = $13
-        RETURNING *`,
-        [
-          twilio_account_sid || null,
-          encryptedAuthToken,
-          twilio_phone_number || null,
-          twilio_enabled !== undefined ? twilio_enabled : null,
-          smtp_host || null,
-          smtp_port || null,
-          smtp_secure !== undefined ? smtp_secure : null,
-          smtp_user || null,
-          encryptedSmtpPassword,
-          smtp_from_name || null,
-          smtp_from_email || null,
-          smtp_enabled !== undefined ? smtp_enabled : null,
-          orgId
-        ]
-      );
+      // Build update query dynamically, only updating fields that are provided and not "***configured***"
+      const updates = [];
+      const params = [];
+      let paramCount = 0;
+
+      if (twilio_account_sid !== undefined && twilio_account_sid !== '***configured***') {
+        paramCount++;
+        updates.push(`twilio_account_sid = $${paramCount}`);
+        params.push(twilio_account_sid);
+      }
+
+      if (encryptedAuthToken !== null) {
+        paramCount++;
+        updates.push(`twilio_auth_token_encrypted = $${paramCount}`);
+        params.push(encryptedAuthToken);
+      }
+
+      if (twilio_phone_number !== undefined) {
+        paramCount++;
+        updates.push(`twilio_phone_number = $${paramCount}`);
+        params.push(twilio_phone_number || null);
+      }
+
+      if (twilio_enabled !== undefined) {
+        paramCount++;
+        updates.push(`twilio_enabled = $${paramCount}`);
+        params.push(twilio_enabled);
+      }
+
+      if (smtp_host !== undefined) {
+        paramCount++;
+        updates.push(`smtp_host = $${paramCount}`);
+        params.push(smtp_host || null);
+      }
+
+      if (smtp_port !== undefined) {
+        paramCount++;
+        updates.push(`smtp_port = $${paramCount}`);
+        params.push(smtp_port || null);
+      }
+
+      if (smtp_secure !== undefined) {
+        paramCount++;
+        updates.push(`smtp_secure = $${paramCount}`);
+        params.push(smtp_secure);
+      }
+
+      if (smtp_user !== undefined) {
+        paramCount++;
+        updates.push(`smtp_user = $${paramCount}`);
+        params.push(smtp_user || null);
+      }
+
+      if (encryptedSmtpPassword !== null) {
+        paramCount++;
+        updates.push(`smtp_password_encrypted = $${paramCount}`);
+        params.push(encryptedSmtpPassword);
+      }
+
+      if (smtp_from_name !== undefined) {
+        paramCount++;
+        updates.push(`smtp_from_name = $${paramCount}`);
+        params.push(smtp_from_name || null);
+      }
+
+      if (smtp_from_email !== undefined) {
+        paramCount++;
+        updates.push(`smtp_from_email = $${paramCount}`);
+        params.push(smtp_from_email || null);
+      }
+
+      if (smtp_enabled !== undefined) {
+        paramCount++;
+        updates.push(`smtp_enabled = $${paramCount}`);
+        params.push(smtp_enabled);
+      }
+
+      // Always update updated_at
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+
+      paramCount++;
+      params.push(orgId);
+
+      const updateQuery = `UPDATE reminder_configurations SET ${updates.join(', ')} WHERE organization_id = $${paramCount} RETURNING *`;
+      const result = await db.query(updateQuery, params);
 
       res.json({ 
         config: result.rows[0],

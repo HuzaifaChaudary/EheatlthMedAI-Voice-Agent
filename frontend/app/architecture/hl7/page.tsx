@@ -122,7 +122,7 @@ export default function HL7ConnectorsPage() {
           password: ''
         })
         setShowCreateModal(false)
-        
+
         if (createFromEHR) {
           router.push(`/architecture/ehr?connector_created=${response.data.connector.id}&type=hl7`)
         }
@@ -146,24 +146,22 @@ export default function HL7ConnectorsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Link 
-            href="/architecture" 
-            className="text-slate-400 hover:text-white mb-4 inline-block transition-colors"
-          >
-            ← Back to Architecture
-          </Link>
-          <h1 className="text-4xl font-bold text-white mb-2">HL7 Connectors</h1>
-          <p className="text-slate-300">
-            Create and manage HL7 connectors for EHR system integration
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950">
+      <header className="container mx-auto px-6 py-6 flex justify-between items-center bg-transparent">
+        <div className="flex items-center space-x-3">
+          <span className="text-xl font-semibold text-white">HL7 Connectors</span>
         </div>
+        <Link href="/architecture" className="text-white hover:text-slate-300 text-sm">
+          ← Architecture
+        </Link>
+      </header>
 
-        {/* Actions */}
+      <main className="container mx-auto px-6 py-8">
         <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-white">HL7 Connectors</h1>
+            <p className="text-slate-400 mt-2">Create and manage HL7 connectors for EHR system integration</p>
+          </div>
           <div className="text-slate-300">
             {connectors.length} {connectors.length === 1 ? 'connector' : 'connectors'} configured
           </div>
@@ -198,11 +196,10 @@ export default function HL7ConnectorsPage() {
                     <h3 className="text-xl font-bold text-white mb-1">{connector.name}</h3>
                     <p className="text-slate-400 text-sm break-all">{connector.endpoint_url}</p>
                   </div>
-                  <span className={`px-2 py-1 text-xs rounded ${
-                    connector.is_active
+                  <span className={`px-2 py-1 text-xs rounded ${connector.is_active
                       ? 'bg-green-500/20 text-green-300 border border-green-500'
                       : 'bg-red-500/20 text-red-300 border border-red-500'
-                  }`}>
+                    }`}>
                     {connector.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
@@ -370,7 +367,7 @@ export default function HL7ConnectorsPage() {
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

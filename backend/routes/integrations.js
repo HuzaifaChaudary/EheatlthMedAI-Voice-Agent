@@ -429,5 +429,50 @@ router.post('/webhooks/retry-failed', authenticateToken, async (req, res) => {
   }
 });
 
+// GoHighLevel Routes
+const ghlService = require('../services/ghlService');
+
+router.get('/ghl/auth-url', authenticateToken, (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  // Store state in session/db if needed for security validation
+  const url = ghlService.getAuthUrl(state);
+  res.json({ url });
+});
+
+router.post('/ghl/callback', authenticateToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: 'Authorization code is required' });
+    }
+
+    const tokenData = await ghlService.exchangeCodeForToken(code);
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0].organization_id;
+
+    // Store in grm_integrations
+    await db.query(
+      `INSERT INTO grm_integrations (organization_id, type, credentials)
+       VALUES ($1, 'ghl', $2)
+       ON CONFLICT (organization_id, type) 
+       DO UPDATE SET credentials = $2, updated_at = CURRENT_TIMESTAMP`,
+      [orgId, JSON.stringify({ ...tokenData, created_at_ts: Date.now() })]
+    );
+
+    res.json({ success: true, message: 'GoHighLevel connected successfully' });
+  } catch (error) {
+    console.error('GHL Callback Error:', error);
+    res.status(500).json({ message: 'Failed to connect GoHighLevel' });
+  }
+});
+
+// Mount test routes
+const testRoutes = require('./integrations/test');
+router.use('/test', testRoutes);
+
 module.exports = router;
 

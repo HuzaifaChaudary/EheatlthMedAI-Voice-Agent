@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import ChatInterface from '@/components/ChatInterface'
+import { get } from '@/lib/api'
+import { isAuthenticated } from '@/lib/auth'
 
 export default function WebChatPage() {
   const [agentId, setAgentId] = useState<number | null>(null)
@@ -10,18 +12,42 @@ export default function WebChatPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchAgents()
+    if (isAuthenticated()) {
+      fetchAgents()
+    } else {
+      setLoading(false)
+    }
   }, [])
 
   const fetchAgents = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
-      const response = await fetch(`${apiUrl}/webchat/agents`)
-      const data = await response.json()
+      const response = await get('/agents')
       
-      if (data.agents && data.agents.length > 0) {
-        setAgents(data.agents)
-        setAgentId(data.agents[0].id)
+      if (response.data?.agents && response.data.agents.length > 0) {
+        // Filter to only show active agents and remove duplicates by type
+        const uniqueAgents = response.data.agents
+          .filter((agent: any) => agent.is_active)
+          .reduce((acc: any[], agent: any) => {
+            // Check if we already have an agent with this type
+            const existing = acc.find(a => a.type === agent.type)
+            if (!existing) {
+              acc.push(agent)
+            } else {
+              // Prefer the one with proper type code (not the name as type)
+              const properTypes = ['front_desk', 'medical_assistant', 'triage_nurse', 'billing_specialist', 'collections_specialist']
+              if (properTypes.includes(agent.type) && !properTypes.includes(existing.type)) {
+                // Replace with the one that has proper type
+                const index = acc.indexOf(existing)
+                acc[index] = agent
+              }
+            }
+            return acc
+          }, [])
+        
+        setAgents(uniqueAgents)
+        if (uniqueAgents.length > 0) {
+          setAgentId(uniqueAgents[0].id)
+        }
       }
     } catch (error) {
       console.error('Error fetching agents:', error)
@@ -72,11 +98,19 @@ export default function WebChatPage() {
                 onChange={(e) => setAgentId(Number(e.target.value))}
                 className="w-full px-4 py-2 bg-slate-800/50 border border-white/20 rounded-lg text-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
               >
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id} className="bg-slate-800">
-                    {agent.name} ({agent.type})
-                  </option>
-                ))}
+                {agents.map((agent) => {
+                  // Format type for display (convert snake_case to Title Case)
+                  const typeDisplay = agent.type
+                    .split('_')
+                    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+                  
+                  return (
+                    <option key={agent.id} value={agent.id} className="bg-slate-800">
+                      {agent.name} - {typeDisplay}
+                    </option>
+                  );
+                })}
               </select>
               {agents.find(a => a.id === agentId)?.description && (
                 <p className="mt-2 text-sm text-slate-300">

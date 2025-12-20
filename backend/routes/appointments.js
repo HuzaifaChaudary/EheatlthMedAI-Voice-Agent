@@ -111,11 +111,12 @@ router.get('/:id', authenticateToken, async (req, res) => {
     );
     const orgId = orgResult.rows[0]?.organization_id || null;
 
+    // Allow access to appointments without conversation_id (manually created) or with matching org
     let query = 'SELECT * FROM appointments WHERE id = $1';
     const params = [id];
 
     if (orgId) {
-      query += ` AND conversation_id IN (SELECT id FROM conversations WHERE user_id IN (SELECT id FROM users WHERE organization_id = $2))`;
+      query += ` AND (conversation_id IS NULL OR conversation_id IN (SELECT id FROM conversations WHERE organization_id = $2 OR user_id IN (SELECT id FROM users WHERE organization_id = $2)))`;
       params.push(orgId);
     }
 
@@ -204,25 +205,33 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Sync to external scheduling systems if configured
     try {
-      if (conversation_id && orgId) {
+      if (orgId) {
         // Get active scheduling integrations
         const integrationsResult = await db.query(
           `SELECT id FROM integrations 
            WHERE organization_id = $1 
            AND provider IN ('google_calendar', 'zocdoc', 'calendly', 'ehr')
-           AND is_active = true`,
+           AND is_active = true
+           ORDER BY CASE provider WHEN 'google_calendar' THEN 1 ELSE 2 END
+           LIMIT 1`,
           [orgId]
         );
 
-        // Sync to first active integration (can be enhanced to sync to all)
+        // Sync to first active integration (prioritize Google Calendar)
         if (integrationsResult.rows.length > 0) {
           const integrationId = integrationsResult.rows[0].id;
-          await appointmentSyncService.syncAppointment(appointment.id, integrationId, orgId);
+          try {
+            await appointmentSyncService.syncAppointment(appointment.id, integrationId, orgId);
+            console.log(`Appointment ${appointment.id} synced to scheduling system`);
+          } catch (syncError) {
+            console.error('Error syncing appointment to external system:', syncError);
+            // Don't fail the appointment creation if sync fails
+          }
         }
       }
     } catch (syncError) {
-      console.error('Error syncing appointment to external system:', syncError);
-      // Don't fail the appointment creation if sync fails
+      console.error('Error checking for scheduling integrations:', syncError);
+      // Don't fail the appointment creation if sync check fails
     }
 
     res.status(201).json({ appointment });
@@ -243,10 +252,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const orgId = orgResult.rows[0]?.organization_id || null;
 
     // Check if appointment exists and user has access
+    // Allow access to appointments without conversation_id (manually created) or with matching org
     let checkQuery = 'SELECT * FROM appointments WHERE id = $1';
     const checkParams = [id];
     if (orgId) {
-      checkQuery += ` AND conversation_id IN (SELECT id FROM conversations WHERE user_id IN (SELECT id FROM users WHERE organization_id = $2))`;
+      checkQuery += ` AND (conversation_id IS NULL OR conversation_id IN (SELECT id FROM conversations WHERE organization_id = $2 OR user_id IN (SELECT id FROM users WHERE organization_id = $2)))`;
       checkParams.push(orgId);
     }
 
@@ -326,7 +336,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
     updates.push('updated_at = CURRENT_TIMESTAMP');
     paramCount++;
     params.push(id);
-    updates.push(`id = $${paramCount}`);
 
     const updateQuery = `UPDATE appointments SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
     const result = await db.query(updateQuery, params);
@@ -388,10 +397,11 @@ router.patch('/:id/cancel', authenticateToken, async (req, res) => {
     const orgId = orgResult.rows[0]?.organization_id || null;
 
     // Check if appointment exists
+    // Allow access to appointments without conversation_id (manually created) or with matching org
     let checkQuery = 'SELECT * FROM appointments WHERE id = $1 AND status != $2';
     const checkParams = [id, 'cancelled'];
     if (orgId) {
-      checkQuery += ` AND conversation_id IN (SELECT id FROM conversations WHERE user_id IN (SELECT id FROM users WHERE organization_id = $3))`;
+      checkQuery += ` AND (conversation_id IS NULL OR conversation_id IN (SELECT id FROM conversations WHERE organization_id = $3 OR user_id IN (SELECT id FROM users WHERE organization_id = $3)))`;
       checkParams.push(orgId);
     }
 
@@ -445,10 +455,11 @@ router.post('/:id/send-reminder', authenticateToken, async (req, res) => {
     const orgId = orgResult.rows[0]?.organization_id || null;
 
     // Get appointment
+    // Allow access to appointments without conversation_id (manually created) or with matching org
     let query = 'SELECT * FROM appointments WHERE id = $1';
     const params = [id];
     if (orgId) {
-      query += ` AND conversation_id IN (SELECT id FROM conversations WHERE user_id IN (SELECT id FROM users WHERE organization_id = $2))`;
+      query += ` AND (conversation_id IS NULL OR conversation_id IN (SELECT id FROM conversations WHERE organization_id = $2 OR user_id IN (SELECT id FROM users WHERE organization_id = $2)))`;
       params.push(orgId);
     }
 

@@ -283,8 +283,27 @@ class ReportService {
    * Fetch billing summary data
    */
   async fetchBillingSummary(queryConfig, parameters) {
-    // Placeholder - implement based on billing schema
-    return [];
+    const { start_date, end_date, organization_id } = parameters;
+    
+    const query = `
+      SELECT 
+        DATE(ps.statement_date) as date,
+        COUNT(*) as total_statements,
+        SUM(ps.total_amount) as total_billed,
+        SUM(ps.balance_due) as total_outstanding,
+        SUM(ps.total_amount - ps.balance_due) as total_paid,
+        AVG(ps.total_amount) as avg_statement_amount
+      FROM patient_statements ps
+      LEFT JOIN conversations c ON ps.conversation_id = c.id
+      WHERE ps.statement_date >= COALESCE($1, CURRENT_DATE - INTERVAL '30 days')
+        AND ps.statement_date <= COALESCE($2, CURRENT_TIMESTAMP)
+        AND ($3::integer IS NULL OR c.organization_id = $3)
+      GROUP BY DATE(ps.statement_date)
+      ORDER BY date DESC
+    `;
+
+    const result = await db.query(query, [start_date, end_date, organization_id]);
+    return result.rows;
   }
 
   /**

@@ -2,6 +2,9 @@ const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const telephonyService = require('../services/telephonyService');
+const smsService = require('../services/smsService');
+const callControlService = require('../services/callControlService');
+const voicemailService = require('../services/voicemailService');
 const router = express.Router();
 
 // Get all phone numbers for organization
@@ -220,6 +223,101 @@ router.post('/calls/make', authenticateToken, async (req, res) => {
   }
 });
 
+// Twilio webhook - Handle incoming call
+router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (req, res) => {
+  try {
+    const { From, To, CallSid } = req.body;
+
+    // Find phone number and organization
+    const phoneResult = await db.query(
+      'SELECT * FROM phone_numbers WHERE phone_number = $1',
+      [To]
+    );
+
+    if (phoneResult.rows.length === 0) {
+      const twilio = require('twilio');
+      const response = new twilio.twiml.VoiceResponse();
+      response.say('Sorry, this number is not configured. Goodbye.');
+      response.hangup();
+      return res.send(response.toString());
+    }
+
+    const phoneNumber = phoneResult.rows[0];
+    const organizationId = phoneNumber.organization_id;
+
+    // Get default agent for this phone number
+    const agentResult = await db.query(
+      'SELECT * FROM ai_agents WHERE phone_number_id = $1 AND organization_id = $2 AND is_active = true LIMIT 1',
+      [phoneNumber.id, organizationId]
+    );
+
+    if (agentResult.rows.length === 0) {
+      const twilio = require('twilio');
+      const response = new twilio.twiml.VoiceResponse();
+      response.say('Sorry, no agent is configured for this number. Goodbye.');
+      response.hangup();
+      return res.send(response.toString());
+    }
+
+    const agent = agentResult.rows[0];
+
+    // Create conversation
+    const conversationResult = await db.query(
+      `INSERT INTO conversations (organization_id, agent_id, patient_phone, status)
+       VALUES ($1, $2, $3, 'active')
+       RETURNING *`,
+      [organizationId, agent.id, From]
+    );
+
+    const conversation = conversationResult.rows[0];
+
+    // Create call log
+    const callLogResult = await db.query(
+      `INSERT INTO call_logs (
+        organization_id, phone_number_id, agent_id, conversation_id,
+        caller_phone, direction, status, provider_call_id, started_at
+      ) VALUES ($1, $2, $3, $4, $5, 'inbound', 'ringing', $6, CURRENT_TIMESTAMP)
+      RETURNING *`,
+      [organizationId, phoneNumber.id, agent.id, conversation.id, From, CallSid]
+    );
+
+    const callLog = callLogResult.rows[0];
+
+    const twilio = require('twilio');
+    const response = new twilio.twiml.VoiceResponse();
+    
+    // Check consent for recording
+    const hasConsent = await telephonyService.checkConsent(From, organizationId, 'recording');
+    
+    if (!hasConsent) {
+      response.say('This call may be recorded for quality and compliance purposes. Do you consent to recording?');
+      response.gather({
+        input: 'speech',
+        action: `${telephonyService.baseUrl}/api/telephony/twilio/consent?conversationId=${conversation.id}&callLogId=${callLog.id}&agentId=${agent.id}&from=${From}`,
+        method: 'POST',
+        speechTimeout: 'auto'
+      });
+      return res.send(response.toString());
+    }
+
+    // Generate initial greeting
+    const twiml = await telephonyService.generateVoiceResponse({
+      conversationId: conversation.id,
+      agentId: agent.id,
+      userInput: null
+    });
+
+    return res.send(twiml);
+  } catch (error) {
+    console.error('Error handling inbound call:', error);
+    const twilio = require('twilio');
+    const response = new twilio.twiml.VoiceResponse();
+    response.say('I apologize, but I encountered an error. Please try again later.');
+    response.hangup();
+    return res.send(response.toString());
+  }
+});
+
 // Twilio webhook - Handle incoming/outgoing call voice
 router.post('/twilio/voice', express.urlencoded({ extended: true }), async (req, res) => {
   try {
@@ -404,22 +502,54 @@ router.post('/twilio/recording-status', express.urlencoded({ extended: true }), 
   }
 });
 
-// Twilio webhook - Handle transcription
+// Twilio webhook - Handle transcription (real-time and final)
 router.post('/twilio/transcription', express.urlencoded({ extended: true }), async (req, res) => {
   try {
-    const { CallSid, TranscriptionText, TranscriptionStatus, TranscriptionUrl } = req.body;
+    const { 
+      CallSid, 
+      TranscriptionText, 
+      TranscriptionStatus, 
+      TranscriptionUrl,
+      TranscriptionSid,
+      Confidence
+    } = req.body;
 
-    if (TranscriptionStatus === 'completed' && TranscriptionText) {
-      // Get call log
-      const callLogResult = await db.query(
-        'SELECT id, organization_id FROM call_logs WHERE provider_call_id = $1',
-        [CallSid]
-      );
+    // Get call log
+    const callLogResult = await db.query(
+      'SELECT id, organization_id, started_at FROM call_logs WHERE provider_call_id = $1',
+      [CallSid]
+    );
 
-      if (callLogResult.rows.length > 0) {
-        const callLog = callLogResult.rows[0];
-        
-        // Update call log with transcription
+    if (callLogResult.rows.length > 0) {
+      const callLog = callLogResult.rows[0];
+      
+      // Calculate timestamp in call (seconds from start)
+      const timestampSeconds = callLog.started_at 
+        ? Math.floor((new Date() - new Date(callLog.started_at)) / 1000)
+        : 0;
+
+      // Save real-time transcription (interim or final)
+      const isFinal = TranscriptionStatus === 'completed';
+      
+      if (TranscriptionText) {
+        await db.query(
+          `INSERT INTO call_transcriptions (
+            call_log_id, organization_id, transcription_text,
+            confidence, is_final, timestamp_seconds
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            callLog.id,
+            callLog.organization_id,
+            TranscriptionText,
+            Confidence ? parseFloat(Confidence) : null,
+            isFinal,
+            timestampSeconds
+          ]
+        );
+      }
+
+      // Update call log with final transcription
+      if (isFinal && TranscriptionText) {
         await db.query(
           'UPDATE call_logs SET transcription_text = $1 WHERE id = $2',
           [TranscriptionText, callLog.id]
@@ -428,13 +558,16 @@ router.post('/twilio/transcription', express.urlencoded({ extended: true }), asy
         // Log transcription completion
         await db.query(
           `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES (NULL, 'CALL_TRANSCRIBED', 'call_logs', $1, $2)`,
           [
-            1,
-            'CALL_TRANSCRIBED',
-            'call_logs',
             callLog.id,
-            JSON.stringify({ transcription_url: TranscriptionUrl, status: TranscriptionStatus })
+            JSON.stringify({ 
+              transcription_url: TranscriptionUrl, 
+              transcription_sid: TranscriptionSid,
+              status: TranscriptionStatus,
+              confidence: Confidence,
+              timestamp: new Date().toISOString()
+            })
           ]
         );
       }
@@ -482,6 +615,343 @@ router.get('/tts-audio', async (req, res) => {
   } catch (error) {
     console.error('Error generating TTS audio:', error);
     res.status(500).json({ message: 'Error generating audio' });
+  }
+});
+
+// SMS Routes
+// Send SMS
+router.post('/sms/send', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { to, from, message, conversation_id } = req.body;
+
+    if (!to || !message) {
+      return res.status(400).json({ message: 'to and message are required' });
+    }
+
+    const result = await smsService.sendSMS({
+      organizationId: orgId,
+      to,
+      from,
+      message,
+      conversationId: conversation_id
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    res.status(500).json({ message: error.message || 'Error sending SMS' });
+  }
+});
+
+// Get SMS messages
+router.get('/sms', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { conversation_id, direction, start_date, end_date, page = 1, limit = 50 } = req.query;
+
+    const messages = await smsService.getSMSMessages(orgId, {
+      conversationId: conversation_id,
+      direction,
+      startDate: start_date,
+      endDate: end_date,
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit)
+    });
+
+    res.json({ messages });
+  } catch (error) {
+    console.error('Error fetching SMS messages:', error);
+    res.status(500).json({ message: 'Error fetching SMS messages' });
+  }
+});
+
+// Twilio webhook - Handle incoming SMS
+router.post('/twilio/sms', express.urlencoded({ extended: true }), async (req, res) => {
+  await smsService.handleIncomingSMS(req, res);
+});
+
+// Call Control Routes
+// Transfer call
+router.post('/calls/:callSid/transfer', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { callSid } = req.params;
+    const { to, from } = req.body;
+
+    if (!to) {
+      return res.status(400).json({ message: 'to is required' });
+    }
+
+    const result = await callControlService.transferCall({
+      organizationId: orgId,
+      callSid,
+      to,
+      from
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error transferring call:', error);
+    res.status(500).json({ message: error.message || 'Error transferring call' });
+  }
+});
+
+// Hold call
+router.post('/calls/:callSid/hold', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { callSid } = req.params;
+    const { hold_music } = req.body;
+
+    const result = await callControlService.holdCall({
+      organizationId: orgId,
+      callSid,
+      holdMusic: hold_music
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error holding call:', error);
+    res.status(500).json({ message: error.message || 'Error holding call' });
+  }
+});
+
+// Mute/unmute call
+router.post('/calls/:callSid/mute', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { callSid } = req.params;
+    const { mute = true } = req.body;
+
+    const result = await callControlService.muteCall({
+      organizationId: orgId,
+      callSid,
+      mute
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error muting call:', error);
+    res.status(500).json({ message: error.message || 'Error muting call' });
+  }
+});
+
+// Hang up call
+router.post('/calls/:callSid/hangup', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { callSid } = req.params;
+
+    const result = await callControlService.hangupCall({
+      organizationId: orgId,
+      callSid
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error hanging up call:', error);
+    res.status(500).json({ message: error.message || 'Error hanging up call' });
+  }
+});
+
+// Get call status
+router.get('/calls/:callSid/status', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { callSid } = req.params;
+
+    const result = await callControlService.getCallStatus({
+      organizationId: orgId,
+      callSid
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting call status:', error);
+    res.status(500).json({ message: error.message || 'Error getting call status' });
+  }
+});
+
+// Call Recordings Routes
+// Get call recordings
+router.get('/recordings', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { call_log_id, start_date, end_date, page = 1, limit = 50 } = req.query;
+
+    let query = `
+      SELECT 
+        cr.*,
+        cl.caller_phone,
+        cl.direction,
+        cl.status as call_status,
+        a.name as agent_name,
+        a.type as agent_type
+      FROM call_recordings cr
+      JOIN call_logs cl ON cr.call_log_id = cl.id
+      LEFT JOIN ai_agents a ON cl.agent_id = a.id
+      WHERE cl.organization_id = $1
+    `;
+    const params = [orgId];
+    let paramCount = 1;
+
+    if (call_log_id) {
+      paramCount++;
+      query += ` AND cr.call_log_id = $${paramCount}`;
+      params.push(call_log_id);
+    }
+
+    if (start_date) {
+      paramCount++;
+      query += ` AND cr.created_at >= $${paramCount}`;
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      paramCount++;
+      query += ` AND cr.created_at <= $${paramCount}`;
+      params.push(end_date);
+    }
+
+    query += ` ORDER BY cr.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    params.push(parseInt(limit), (parseInt(page) - 1) * parseInt(limit));
+
+    const result = await db.query(query, params);
+    res.json({ recordings: result.rows });
+  } catch (error) {
+    console.error('Error fetching recordings:', error);
+    res.status(500).json({ message: 'Error fetching recordings' });
+  }
+});
+
+// Voicemail Routes
+// Get voicemails
+router.get('/voicemails', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { status, start_date, end_date, page = 1, limit = 50 } = req.query;
+
+    const voicemails = await voicemailService.getVoicemails(orgId, {
+      status,
+      startDate: start_date,
+      endDate: end_date,
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit)
+    });
+
+    res.json({ voicemails });
+  } catch (error) {
+    console.error('Error fetching voicemails:', error);
+    res.status(500).json({ message: 'Error fetching voicemails' });
+  }
+});
+
+// Mark voicemail as read
+router.patch('/voicemails/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { id } = req.params;
+
+    const result = await voicemailService.markVoicemailAsRead(id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error marking voicemail as read:', error);
+    res.status(500).json({ message: error.message || 'Error marking voicemail as read' });
+  }
+});
+
+// Delete voicemail
+router.delete('/voicemails/:id', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0].organization_id;
+    const { id } = req.params;
+
+    const result = await voicemailService.deleteVoicemail(id, orgId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting voicemail:', error);
+    res.status(500).json({ message: error.message || 'Error deleting voicemail' });
+  }
+});
+
+// Twilio webhook - Handle voicemail recording
+router.post('/twilio/voicemail', express.urlencoded({ extended: true }), async (req, res) => {
+  await voicemailService.handleVoicemailRecording(req, res);
+});
+
+// Twilio webhook - Handle transfer status
+router.post('/twilio/transfer-status', express.urlencoded({ extended: true }), async (req, res) => {
+  try {
+    const { CallStatus, CallSid } = req.body;
+    
+    // Log transfer status
+    await db.query(
+      `INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
+       VALUES (NULL, 'CALL_TRANSFER_STATUS', 'call_logs', 
+       (SELECT id FROM call_logs WHERE provider_call_id = $1), $2)`,
+      [CallSid, JSON.stringify({ status: CallStatus, timestamp: new Date().toISOString() })]
+    );
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error handling transfer status:', error);
+    res.status(200).send('OK');
   }
 });
 

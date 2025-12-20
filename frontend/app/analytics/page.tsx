@@ -31,13 +31,47 @@ interface DailyVolume {
   total_duration: number
 }
 
+interface AvgHandleTime {
+  avg_handle_time_seconds: number
+  avg_completed_handle_time_seconds: number
+  total_calls: number
+  completed_calls: number
+  avg_handle_time_formatted: string
+  avg_completed_handle_time_formatted: string
+}
+
+interface SchedulingSuccessRate {
+  total_booking_attempts: number
+  successful_bookings: number
+  cancelled_bookings: number
+  no_shows: number
+  success_rate_percentage: number
+  unique_days_with_bookings: number
+}
+
+interface CollectionsRecovered {
+  total_recovered: number
+  total_payments: number
+  avg_payment_amount: number
+  statements_paid: number
+  completed_payments: number
+  failed_payments: number
+  total_overdue_before: number
+  overdue_statements: number
+  recovery_rate_percentage: number
+}
+
 export default function AnalyticsPage() {
   const router = useRouter()
   const [callStats, setCallStats] = useState<CallStats | null>(null)
   const [agentPerformance, setAgentPerformance] = useState<AgentPerformance[]>([])
   const [dailyVolume, setDailyVolume] = useState<DailyVolume[]>([])
+  const [avgHandleTime, setAvgHandleTime] = useState<AvgHandleTime | null>(null)
+  const [schedulingSuccessRate, setSchedulingSuccessRate] = useState<SchedulingSuccessRate | null>(null)
+  const [collectionsRecovered, setCollectionsRecovered] = useState<CollectionsRecovered | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'combined'>('combined')
   const [dateRange, setDateRange] = useState({
     start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end_date: new Date().toISOString().split('T')[0]
@@ -91,6 +125,12 @@ export default function AnalyticsPage() {
         })
         setAgentPerformance([])
         setDailyVolume([])
+        setAvgHandleTime(null)
+        setSchedulingSuccessRate(null)
+        setCollectionsRecovered(null)
+        setAvgHandleTime(null)
+        setSchedulingSuccessRate(null)
+        setCollectionsRecovered(null)
       } else if (response.data) {
         setCallStats(response.data.call_stats || {
           total_calls: 0,
@@ -102,6 +142,9 @@ export default function AnalyticsPage() {
         })
         setAgentPerformance(response.data.agent_performance || [])
         setDailyVolume(response.data.daily_volume || [])
+        setAvgHandleTime(response.data.avg_handle_time || null)
+        setSchedulingSuccessRate(response.data.scheduling_success_rate || null)
+        setCollectionsRecovered(response.data.collections_recovered || null)
       }
     } catch (error: any) {
       console.error('Error fetching analytics:', error)
@@ -257,6 +300,34 @@ export default function AnalyticsPage() {
           </div>
         )}
 
+        {/* Advanced Metrics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {avgHandleTime && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-slate-300 text-sm mb-2">Average Handle Time</div>
+              <div className="text-2xl font-bold text-white mb-1">{avgHandleTime.avg_handle_time_formatted}</div>
+              <div className="text-slate-400 text-xs">Completed calls: {avgHandleTime.avg_completed_handle_time_formatted}</div>
+              <div className="text-slate-400 text-xs mt-1">Total: {avgHandleTime.total_calls} calls</div>
+            </div>
+          )}
+          {schedulingSuccessRate && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-slate-300 text-sm mb-2">Scheduling Success Rate</div>
+              <div className="text-2xl font-bold text-white mb-1">{schedulingSuccessRate.success_rate_percentage.toFixed(1)}%</div>
+              <div className="text-slate-400 text-xs">Successful: {schedulingSuccessRate.successful_bookings} / {schedulingSuccessRate.total_booking_attempts}</div>
+              <div className="text-slate-400 text-xs mt-1">Cancelled: {schedulingSuccessRate.cancelled_bookings} | No-shows: {schedulingSuccessRate.no_shows}</div>
+            </div>
+          )}
+          {collectionsRecovered && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+              <div className="text-slate-300 text-sm mb-2">Collections Recovered</div>
+              <div className="text-2xl font-bold text-white mb-1">{formatCurrency(collectionsRecovered.total_recovered)}</div>
+              <div className="text-slate-400 text-xs">Recovery rate: {collectionsRecovered.recovery_rate_percentage.toFixed(1)}%</div>
+              <div className="text-slate-400 text-xs mt-1">Payments: {collectionsRecovered.total_payments} | Statements: {collectionsRecovered.statements_paid}</div>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Agent Performance */}
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
@@ -295,8 +366,35 @@ export default function AnalyticsPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold text-white">Daily Call Volume</h2>
               <div className="flex gap-2">
-                <button className="px-3 py-1 bg-teal-600/20 text-teal-300 rounded text-xs border border-teal-500">
+                <button
+                  onClick={() => setChartType('bar')}
+                  className={`px-3 py-1 rounded text-xs border transition-colors ${
+                    chartType === 'bar'
+                      ? 'bg-teal-600/20 text-teal-300 border-teal-500'
+                      : 'bg-white/10 text-slate-300 border-white/20 hover:bg-white/20'
+                  }`}
+                >
                   Bar
+                </button>
+                <button
+                  onClick={() => setChartType('line')}
+                  className={`px-3 py-1 rounded text-xs border transition-colors ${
+                    chartType === 'line'
+                      ? 'bg-teal-600/20 text-teal-300 border-teal-500'
+                      : 'bg-white/10 text-slate-300 border-white/20 hover:bg-white/20'
+                  }`}
+                >
+                  Line
+                </button>
+                <button
+                  onClick={() => setChartType('combined')}
+                  className={`px-3 py-1 rounded text-xs border transition-colors ${
+                    chartType === 'combined'
+                      ? 'bg-teal-600/20 text-teal-300 border-teal-500'
+                      : 'bg-white/10 text-slate-300 border-white/20 hover:bg-white/20'
+                  }`}
+                >
+                  Combined
                 </button>
               </div>
             </div>
@@ -333,8 +431,8 @@ export default function AnalyticsPage() {
                         </text>
                       ))
                     })()}
-                    {/* Bar Chart */}
-                    {dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                    {/* Bar Chart - Show if bar or combined */}
+                    {(chartType === 'bar' || chartType === 'combined') && dailyVolume.slice(0, 30).reverse().map((day, index) => {
                       const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
                       const height = ((day.call_count || 0) / maxCalls) * 150
                       const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700
@@ -346,46 +444,51 @@ export default function AnalyticsPage() {
                           y={200 - height}
                           width={width}
                           height={height}
-                          fill="#14b8a6"
+                          fill={chartType === 'combined' ? "#14b8a6" : "#14b8a6"}
+                          opacity={chartType === 'combined' ? 0.6 : 1}
                           className="hover:fill-teal-400 transition-colors cursor-pointer"
                         >
                           <title>{`${day.call_count} calls on ${new Date(day.date).toLocaleDateString()}`}</title>
                         </rect>
                       )
                     })}
-                    {/* Line Chart Overlay */}
-                    <polyline
-                      points={dailyVolume.slice(0, 30).reverse().map((day, index) => {
-                        const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
-                        const height = ((day.call_count || 0) / maxCalls) * 150
-                        const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
-                        const y = 200 - height
-                        return `${x},${y}`
-                      }).join(' ')}
-                      fill="none"
-                      stroke="#3b82f6"
-                      strokeWidth="2"
-                      className="cursor-pointer"
-                    />
-                    {/* Data points */}
-                    {dailyVolume.slice(0, 30).reverse().map((day, index) => {
-                      const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
-                      const height = ((day.call_count || 0) / maxCalls) * 150
-                      const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
-                      const y = 200 - height
-                      return (
-                        <circle
-                          key={index}
-                          cx={x}
-                          cy={y}
-                          r="4"
-                          fill="#3b82f6"
-                          className="hover:r-6 transition-all cursor-pointer"
-                        >
-                          <title>{`${day.call_count} calls on ${new Date(day.date).toLocaleDateString()}`}</title>
-                        </circle>
-                      )
-                    })}
+                    {/* Line Chart - Show if line or combined */}
+                    {(chartType === 'line' || chartType === 'combined') && (
+                      <>
+                        <polyline
+                          points={dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                            const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                            const height = ((day.call_count || 0) / maxCalls) * 150
+                            const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
+                            const y = 200 - height
+                            return `${x},${y}`
+                          }).join(' ')}
+                          fill="none"
+                          stroke="#3b82f6"
+                          strokeWidth="2"
+                          className="cursor-pointer"
+                        />
+                        {/* Data points */}
+                        {dailyVolume.slice(0, 30).reverse().map((day, index) => {
+                          const maxCalls = Math.max(...dailyVolume.map(d => d.call_count || 0), 1)
+                          const height = ((day.call_count || 0) / maxCalls) * 150
+                          const x = 50 + (index / Math.min(dailyVolume.length, 30)) * 700 + (700 / Math.min(dailyVolume.length, 30)) / 2
+                          const y = 200 - height
+                          return (
+                            <circle
+                              key={index}
+                              cx={x}
+                              cy={y}
+                              r="4"
+                              fill="#3b82f6"
+                              className="hover:r-6 transition-all cursor-pointer"
+                            >
+                              <title>{`${day.call_count} calls on ${new Date(day.date).toLocaleDateString()}`}</title>
+                            </circle>
+                          )
+                        })}
+                      </>
+                    )}
                     {/* X-axis labels */}
                     {dailyVolume.slice(0, 30).reverse().filter((_, index) => index % 5 === 0).map((day, labelIndex) => {
                       const index = labelIndex * 5

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const reportService = require('../services/reportService');
+const scheduledReportService = require('../services/scheduledReportService');
 const router = express.Router();
 
 // Get report templates
@@ -55,13 +56,94 @@ router.post('/templates', authenticateToken, async (req, res) => {
       `INSERT INTO report_templates (organization_id, name, type, description, query_config, schedule, recipients, format)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [orgId || null, name, type, description || null, JSON.stringify(query_config || {}), schedule || null, recipients || [], format || 'pdf']
+      [
+        orgId || null, 
+        name, 
+        type, 
+        description || null, 
+        JSON.stringify(query_config || {}), 
+        schedule || null, 
+        recipients || [], 
+        format || 'pdf'
+      ]
     );
+
+    // Schedule report if schedule is provided
+    if (schedule && schedule.frequency) {
+      try {
+        await scheduledReportService.scheduleReport(result.rows[0].id, schedule, recipients || [], orgId);
+      } catch (scheduleError) {
+        console.error('Error scheduling report:', scheduleError);
+        // Don't fail the request if scheduling fails
+      }
+    }
 
     res.status(201).json({ template: result.rows[0] });
   } catch (error) {
     console.error('Error creating report template:', error);
     res.status(500).json({ message: 'Error creating report template' });
+  }
+});
+
+// Update report template
+router.post('/templates/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const { name, type, description, query_config, schedule, recipients, format } = req.body;
+
+    // Verify template belongs to organization
+    let checkQuery, checkParams;
+    if (orgId) {
+      checkQuery = 'SELECT id FROM report_templates WHERE id = $1 AND organization_id = $2';
+      checkParams = [id, orgId];
+    } else {
+      checkQuery = 'SELECT id FROM report_templates WHERE id = $1 AND organization_id IS NULL';
+      checkParams = [id];
+    }
+
+    const checkResult = await db.query(checkQuery, checkParams);
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Template not found' });
+    }
+
+    const result = await db.query(
+      `UPDATE report_templates 
+       SET name = COALESCE($1, name),
+           type = COALESCE($2, type),
+           description = $3,
+           query_config = COALESCE($4, query_config),
+           schedule = $5,
+           recipients = COALESCE($6, recipients),
+           format = COALESCE($7, format),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $8
+       RETURNING *`,
+      [
+        name,
+        type,
+        description || null,
+        query_config ? JSON.stringify(query_config) : null,
+        schedule || null,
+        recipients || [],
+        format,
+        id
+      ]
+    );
+
+    res.json({ template: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating report template:', error);
+    res.status(500).json({ message: 'Error updating report template' });
   }
 });
 
@@ -410,6 +492,93 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error downloading report:', error);
     res.status(500).json({ message: 'Error downloading report', error: error.message });
+  }
+});
+
+// Get scheduled reports
+router.get('/scheduled', authenticateToken, async (req, res) => {
+  try {
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id || null;
+
+    const scheduledReports = await scheduledReportService.getScheduledReports(orgId);
+    res.json({ scheduled_reports: scheduledReports });
+  } catch (error) {
+    console.error('Error fetching scheduled reports:', error);
+    res.status(500).json({ message: 'Error fetching scheduled reports', error: error.message });
+  }
+});
+
+// Update report schedule
+router.put('/templates/:id/schedule', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id || null;
+
+    const { schedule, recipients } = req.body;
+
+    // Verify template belongs to organization
+    const templateResult = await db.query(
+      'SELECT * FROM report_templates WHERE id = $1 AND organization_id = $2',
+      [id, orgId]
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Template not found' });
+    }
+
+    // Update schedule
+    await db.query(
+      `UPDATE report_templates 
+       SET schedule = $1, recipients = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [schedule ? JSON.stringify(schedule) : null, JSON.stringify(recipients || []), id]
+    );
+
+    // Re-register cron job if schedule provided
+    if (schedule && schedule.frequency) {
+      await scheduledReportService.scheduleReport(id, schedule, recipients || [], orgId);
+    }
+
+    res.json({ message: 'Schedule updated successfully' });
+  } catch (error) {
+    console.error('Error updating report schedule:', error);
+    res.status(500).json({ message: 'Error updating schedule', error: error.message });
+  }
+});
+
+// Manually trigger scheduled report
+router.post('/templates/:id/trigger', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id || null;
+
+    // Trigger report generation
+    const result = await scheduledReportService.generateAndSendScheduledReport(id, orgId);
+
+    res.json({ message: 'Report generated and sent successfully', report_id: result.report_id });
+  } catch (error) {
+    console.error('Error triggering scheduled report:', error);
+    res.status(500).json({ message: 'Error triggering report', error: error.message });
   }
 });
 

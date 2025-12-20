@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { get, post, del } from '@/lib/api';
 import { getAuthHeader } from '@/lib/auth';
 
@@ -80,26 +81,81 @@ export default function CollectionsPage() {
 
       if (activeTab === 'payment-plans') {
         const response = await get('/api/collections/payment-plans');
-        setPaymentPlans(response.payment_plans || []);
+        if (response.ok && response.data) {
+          setPaymentPlans(Array.isArray(response.data.payment_plans) ? response.data.payment_plans : []);
+        } else {
+          setPaymentPlans([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'reminders') {
         const response = await get('/api/collections/reminders');
-        setReminders(response.reminders || []);
+        if (response.ok && response.data) {
+          setReminders(Array.isArray(response.data.reminders) ? response.data.reminders : []);
+        } else {
+          setReminders([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'do-not-call') {
         const response = await get('/api/collections/do-not-call');
-        setDoNotCallList(response.do_not_call_list || []);
+        if (response.ok && response.data) {
+          setDoNotCallList(Array.isArray(response.data.do_not_call_list) ? response.data.do_not_call_list : []);
+        } else {
+          setDoNotCallList([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'consent') {
         const response = await get('/api/collections/consent-records');
-        setConsentRecords(response.consent_records || []);
+        if (response.ok && response.data) {
+          setConsentRecords(Array.isArray(response.data.consent_records) ? response.data.consent_records : []);
+        } else {
+          setConsentRecords([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'cases') {
         const response = await get('/api/collections/cases');
-        setCases(response.cases || []);
+        if (response.ok && response.data) {
+          setCases(Array.isArray(response.data.cases) ? response.data.cases : []);
+        } else {
+          setCases([]);
+          if (response.error) setError(response.error);
+        }
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Error loading data');
+      // Reset state on error
+      setPaymentPlans([]);
+      setReminders([]);
+      setDoNotCallList([]);
+      setConsentRecords([]);
+      setCases([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to safely format currency
+  const formatCurrency = (value: any): string => {
+    if (value === null || value === undefined || value === '') {
+      return '$0.00';
+    }
+    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+    if (isNaN(num)) {
+      return '$0.00';
+    }
+    return `$${num.toFixed(2)}`;
+  };
+
+  // Helper function to safely format number
+  const formatNumber = (value: any): string => {
+    if (value === null || value === undefined || value === '') {
+      return '0';
+    }
+    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+    if (isNaN(num)) {
+      return '0';
+    }
+    return num.toFixed(2);
   };
 
   const getStatusColor = (status: string) => {
@@ -124,8 +180,14 @@ export default function CollectionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950">
+      <header className="container mx-auto px-6 py-6 flex justify-between items-center">
+        <Link href="/dashboard" className="text-white hover:text-slate-300 text-sm">
+          ← Dashboard
+        </Link>
+      </header>
+
+      <main className="container mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Collections Management</h1>
           <p className="text-slate-300">Manage payment plans, reminders, and TCPA compliance</p>
@@ -177,9 +239,9 @@ export default function CollectionsPage() {
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <h3 className="text-xl font-semibold text-white mb-2">
-                            Payment Plan #{plan.id}
+                            Payment Plan #{plan.id || 'N/A'}
                           </h3>
-                          <p className="text-slate-300 text-sm">Patient: {plan.patient_name}</p>
+                          <p className="text-slate-300 text-sm">Patient: {plan.patient_name || 'N/A'}</p>
                           {plan.statement_number && (
                             <p className="text-slate-300 text-sm">Statement: {plan.statement_number}</p>
                           )}
@@ -191,15 +253,15 @@ export default function CollectionsPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                         <div>
                           <p className="text-slate-400 text-sm">Total Amount</p>
-                          <p className="text-white font-semibold">${parseFloat(plan.total_amount).toFixed(2)}</p>
+                          <p className="text-white font-semibold">{formatCurrency(plan.total_amount)}</p>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm">Remaining Balance</p>
-                          <p className="text-white font-semibold">${parseFloat(plan.remaining_balance).toFixed(2)}</p>
+                          <p className="text-white font-semibold">{formatCurrency(plan.remaining_balance)}</p>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm">Monthly Payment</p>
-                          <p className="text-white font-semibold">${parseFloat(plan.monthly_payment_amount).toFixed(2)}</p>
+                          <p className="text-white font-semibold">{formatCurrency(plan.monthly_payment_amount)}</p>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm">Next Payment</p>
@@ -232,9 +294,9 @@ export default function CollectionsPage() {
                           <h3 className="text-xl font-semibold text-white mb-2">
                             Reminder #{reminder.id}
                           </h3>
-                          <p className="text-slate-300 text-sm">Patient: {reminder.patient_name}</p>
+                          <p className="text-slate-300 text-sm">Patient: {reminder.patient_name || 'N/A'}</p>
                           <p className="text-slate-300 text-sm">
-                            Balance: ${parseFloat(reminder.balance_amount).toFixed(2)} ({reminder.days_overdue} days overdue)
+                            Balance: {formatCurrency(reminder.balance_amount)} ({reminder.days_overdue || 0} days overdue)
                           </p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(reminder.reminder_status)}`}>
@@ -356,9 +418,9 @@ export default function CollectionsPage() {
                           <h3 className="text-xl font-semibold text-white mb-2">
                             Case #{caseItem.id}
                           </h3>
-                          <p className="text-slate-300 text-sm">Patient: {caseItem.patient_name}</p>
+                          <p className="text-slate-300 text-sm">Patient: {caseItem.patient_name || 'N/A'}</p>
                           <p className="text-slate-300 text-sm">
-                            Balance: ${parseFloat(caseItem.balance_amount).toFixed(2)} ({caseItem.days_overdue} days overdue)
+                            Balance: {formatCurrency(caseItem.balance_amount)} ({caseItem.days_overdue || 0} days overdue)
                           </p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(caseItem.case_status)}`}>
@@ -372,7 +434,7 @@ export default function CollectionsPage() {
             )}
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }
