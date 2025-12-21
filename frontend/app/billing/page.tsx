@@ -57,7 +57,7 @@ export default function BillingPage() {
       setError(null);
 
       if (activeTab === 'statements') {
-        const response = await get('/api/billing/statements');
+        const response = await get<{ statements: Statement[] }>('/api/billing/statements');
         if (response.ok && response.data) {
           setStatements(Array.isArray(response.data.statements) ? response.data.statements : []);
         } else {
@@ -65,7 +65,7 @@ export default function BillingPage() {
           if (response.error) setError(response.error);
         }
       } else if (activeTab === 'payments') {
-        const response = await get('/api/billing/payments');
+        const response = await get<{ payments: Payment[] }>('/api/billing/payments');
         if (response.ok && response.data) {
           setPayments(Array.isArray(response.data.payments) ? response.data.payments : []);
         } else {
@@ -73,7 +73,7 @@ export default function BillingPage() {
           if (response.error) setError(response.error);
         }
       } else if (activeTab === 'receipts') {
-        const response = await get('/api/billing/receipts');
+        const response = await get<{ receipts: Receipt[] }>('/api/billing/receipts');
         if (response.ok && response.data) {
           setReceipts(Array.isArray(response.data.receipts) ? response.data.receipts : []);
         } else {
