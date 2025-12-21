@@ -58,17 +58,36 @@ export default function BillingPage() {
 
       if (activeTab === 'statements') {
         const response = await get('/api/billing/statements');
-        setStatements(response.statements || []);
+        if (response.ok && response.data) {
+          setStatements(Array.isArray(response.data.statements) ? response.data.statements : []);
+        } else {
+          setStatements([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'payments') {
         const response = await get('/api/billing/payments');
-        setPayments(response.payments || []);
+        if (response.ok && response.data) {
+          setPayments(Array.isArray(response.data.payments) ? response.data.payments : []);
+        } else {
+          setPayments([]);
+          if (response.error) setError(response.error);
+        }
       } else if (activeTab === 'receipts') {
         const response = await get('/api/billing/receipts');
-        setReceipts(response.receipts || []);
+        if (response.ok && response.data) {
+          setReceipts(Array.isArray(response.data.receipts) ? response.data.receipts : []);
+        } else {
+          setReceipts([]);
+          if (response.error) setError(response.error);
+        }
       }
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Error loading data');
+      // Reset state on error
+      setStatements([]);
+      setPayments([]);
+      setReceipts([]);
     } finally {
       setLoading(false);
     }
@@ -100,6 +119,18 @@ export default function BillingPage() {
       console.error('Error downloading receipt:', err);
       alert('Failed to download receipt: ' + err.message);
     }
+  };
+
+  // Helper function to safely format currency
+  const formatCurrency = (value: number | string | undefined | null): string => {
+    if (value === null || value === undefined || value === '') {
+      return '$0.00';
+    }
+    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+    if (isNaN(num)) {
+      return '$0.00';
+    }
+    return `$${num.toFixed(2)}`;
   };
 
   const getStatusColor = (status: string) => {
@@ -213,11 +244,11 @@ export default function BillingPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                         <div>
                           <p className="text-slate-400 text-sm">Total Amount</p>
-                          <p className="text-white font-semibold">${parseFloat(statement.total_amount).toFixed(2)}</p>
+                          <p className="text-white font-semibold">{formatCurrency(statement.total_amount)}</p>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm">Balance Due</p>
-                          <p className="text-white font-semibold">${parseFloat(statement.balance_due).toFixed(2)}</p>
+                          <p className="text-white font-semibold">{formatCurrency(statement.balance_due)}</p>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm">Status</p>
@@ -274,7 +305,7 @@ export default function BillingPage() {
                         <div>
                           <p className="text-slate-400 text-sm">Amount</p>
                           <p className="text-white font-semibold text-lg">
-                            ${parseFloat(payment.payment_amount).toFixed(2)}
+                            {formatCurrency(payment.payment_amount)}
                           </p>
                         </div>
                         <div>
@@ -344,7 +375,7 @@ export default function BillingPage() {
                         <div>
                           <p className="text-slate-400 text-sm">Amount</p>
                           <p className="text-white font-semibold text-lg">
-                            ${parseFloat(receipt.payment_amount).toFixed(2)}
+                            {formatCurrency(receipt.payment_amount)}
                           </p>
                         </div>
                         <div>

@@ -128,12 +128,12 @@ class CRMService {
 
       const result = await response.json();
 
-      return {
-        success: true,
-        provider: 'salesforce',
+    return {
+      success: true,
+      provider: 'salesforce',
         ticketId: result.id,
         caseNumber: result.CaseNumber,
-        message: 'Ticket created in Salesforce',
+      message: 'Ticket created in Salesforce',
         url: `${instance_url}/lightning/r/Case/${result.id}/view`
       };
     } catch (error) {
@@ -206,7 +206,7 @@ class CRMService {
     const hubspotTicket = {
       properties: {
         subject: ticketData.subject || 'Support Request',
-        content: ticketData.description || '',
+      content: ticketData.description || '',
         hs_pipeline: ticketData.pipeline_id || '0',
         hs_pipeline_stage: ticketData.stage_id || '1',
         hs_ticket_priority: this.mapPriorityToHubSpot(ticketData.priority),
@@ -245,9 +245,9 @@ class CRMService {
         await this.associateHubSpotTicketWithContact(authToken, result.id, ticketData.requester_email);
       }
 
-      return {
-        success: true,
-        provider: 'hubspot',
+    return {
+      success: true,
+      provider: 'hubspot',
         ticketId: result.id,
         message: 'Ticket created in HubSpot',
         url: `https://app.hubspot.com/contacts/tickets/${result.id}`
@@ -390,9 +390,9 @@ class CRMService {
 
       const result = await response.json();
 
-      return {
-        success: true,
-        provider: 'zendesk',
+    return {
+      success: true,
+      provider: 'zendesk',
         ticketId: result.ticket.id,
         ticketUrl: result.ticket.url,
         message: 'Ticket created in Zendesk',
@@ -522,11 +522,11 @@ class CRMService {
           break;
         default:
           result = {
-            success: true,
-            provider,
-            ticketId,
+        success: true,
+        provider,
+        ticketId,
             message: `Ticket update not implemented for ${provider}`
-          };
+      };
       }
 
       return result;

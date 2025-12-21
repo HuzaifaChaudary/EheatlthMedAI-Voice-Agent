@@ -139,13 +139,13 @@ export default function ReportsPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-white">
-      {/* Header */}
-      <header className="container mx-auto px-6 py-6 flex justify-between items-center border-b border-white/10">
-        <div className="flex items-center space-x-3">
-          <span className="text-xl font-semibold">Reports & Analytics</span>
-        </div>
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-white">
+            {/* Header */}
+            <header className="container mx-auto px-6 py-6 flex justify-between items-center border-b border-white/10">
+                <div className="flex items-center space-x-3">
+                    <span className="text-xl font-semibold">Reports & Analytics</span>
+                </div>
         <div className="flex items-center gap-4">
           <button 
             onClick={fetchData}
@@ -154,13 +154,13 @@ export default function ReportsPage() {
             <RefreshCw size={16} />
             Refresh
           </button>
-          <Link href="/dashboard" className="text-white hover:text-slate-300 text-sm flex items-center gap-1 transition-colors">
-            <ChevronLeft size={16} /> Dashboard
-          </Link>
+                <Link href="/dashboard" className="text-white hover:text-slate-300 text-sm flex items-center gap-1 transition-colors">
+                    <ChevronLeft size={16} /> Dashboard
+                </Link>
         </div>
-      </header>
+            </header>
 
-      <main className="container mx-auto px-6 py-8">
+            <main className="container mx-auto px-6 py-8">
         {/* Date Range Filter */}
         <div className="mb-8 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
@@ -269,11 +269,11 @@ export default function ReportsPage() {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
+                        </div>
+                    </div>
 
           {/* Call Status Distribution */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
             <h3 className="text-lg font-semibold mb-4 text-purple-400 flex items-center gap-2">
               <Users size={20} />
               Call Status Distribution
@@ -310,8 +310,8 @@ export default function ReportsPage() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
+                        </div>
+                    </div>
 
         {/* Agent Performance */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 mb-8">
@@ -391,6 +391,6 @@ export default function ReportsPage() {
           </Link>
         </div>
       </main>
-    </div>
-  )
+        </div>
+    )
 }

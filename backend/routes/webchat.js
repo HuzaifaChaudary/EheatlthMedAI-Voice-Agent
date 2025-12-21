@@ -141,7 +141,7 @@ router.post('/message', async (req, res) => {
     }
 
     const agent = agentResult.rows[0];
-    
+
     // Get organization_id from agent or conversation metadata
     let orgId = agent.organization_id;
     if (!orgId && conversation.metadata) {

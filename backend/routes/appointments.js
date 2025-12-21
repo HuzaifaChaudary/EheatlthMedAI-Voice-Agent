@@ -221,7 +221,7 @@ router.post('/', authenticateToken, async (req, res) => {
         if (integrationsResult.rows.length > 0) {
           const integrationId = integrationsResult.rows[0].id;
           try {
-            await appointmentSyncService.syncAppointment(appointment.id, integrationId, orgId);
+          await appointmentSyncService.syncAppointment(appointment.id, integrationId, orgId);
             console.log(`Appointment ${appointment.id} synced to scheduling system`);
           } catch (syncError) {
             console.error('Error syncing appointment to external system:', syncError);

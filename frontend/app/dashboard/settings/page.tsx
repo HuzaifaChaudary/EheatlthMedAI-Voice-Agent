@@ -142,7 +142,7 @@ export default function SettingsPage() {
         // No organization - set defaults
         setOrganization(null)
         setOrgForm({
-          name: 'My Organization',
+            name: 'My Organization',
           subdomain: '',
           domain: '',
           contact_email: '',
@@ -214,7 +214,7 @@ export default function SettingsPage() {
   }
 
   const fetchBillingData = async () => {
-    try {
+        try {
       // Fetch agents count
       const agentsRes = await get('/agents')
       const agentsCount = agentsRes.data?.agents?.length || 0
@@ -345,14 +345,14 @@ export default function SettingsPage() {
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
     setTimeout(() => setMessage(null), 5000)
-  }
+    }
 
-  const tabs = [
+    const tabs = [
     { id: 'profile', label: 'Organization Profile', icon: Building2 },
     { id: 'users', label: 'User Management', icon: Users },
     { id: 'security', label: 'Security & Access', icon: Shield },
     { id: 'billing', label: 'Billing & Subscription', icon: CreditCard }
-  ]
+    ]
 
   if (loading) {
     return (
@@ -362,19 +362,19 @@ export default function SettingsPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-white">
-      {/* Header */}
-      <header className="container mx-auto px-6 py-6 flex justify-between items-center border-b border-white/10">
-        <div className="flex items-center space-x-3">
-          <span className="text-xl font-semibold">Settings</span>
-        </div>
-        <Link href="/dashboard" className="text-white hover:text-slate-300 text-sm flex items-center gap-1 transition-colors">
-          <ChevronLeft size={16} /> Dashboard
-        </Link>
-      </header>
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 text-white">
+            {/* Header */}
+            <header className="container mx-auto px-6 py-6 flex justify-between items-center border-b border-white/10">
+                <div className="flex items-center space-x-3">
+                    <span className="text-xl font-semibold">Settings</span>
+                </div>
+                <Link href="/dashboard" className="text-white hover:text-slate-300 text-sm flex items-center gap-1 transition-colors">
+                    <ChevronLeft size={16} /> Dashboard
+                </Link>
+            </header>
 
-      <main className="container mx-auto px-6 py-8">
+            <main className="container mx-auto px-6 py-8">
         {/* Message */}
         {message && (
           <div className={`mb-6 px-4 py-3 rounded-lg flex items-center gap-2 ${
@@ -387,41 +387,41 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Organization Settings</h1>
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-white mb-2">Organization Settings</h1>
           <p className="text-slate-400">Manage your organization profile, team members, and security preferences.</p>
-        </div>
+                </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar Navigation */}
-          <div className="lg:col-span-1">
-            <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                    {/* Sidebar Navigation */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
                   className={`w-full text-left px-4 py-3 text-sm font-medium transition-colors flex items-center gap-3 ${
                     activeTab === tab.id
-                      ? 'bg-teal-600/20 text-teal-300 border-l-2 border-teal-500'
+                                            ? 'bg-teal-600/20 text-teal-300 border-l-2 border-teal-500'
                       : 'text-slate-400 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
-                  }`}
-                >
+                                        }`}
+                                >
                   <tab.icon size={18} />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-3">
+                    {/* Main Content */}
+                    <div className="lg:col-span-3">
             {/* Organization Profile Tab */}
-            {activeTab === 'profile' && (
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                        {activeTab === 'profile' && (
+                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+                                <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                   <Building2 size={24} className="text-teal-400" />
-                  Profile Information
-                </h2>
+                                    Profile Information
+                                </h2>
 
                 {/* Show create organization prompt if no organization exists */}
                 {!organization && (
@@ -435,19 +435,19 @@ export default function SettingsPage() {
 
                 <form onSubmit={organization ? handleSaveOrganization : handleCreateOrganization} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-slate-300 text-sm mb-2">Organization Name</label>
-                      <input
+                                        <div>
+                                            <label className="block text-slate-300 text-sm mb-2">Organization Name</label>
+                                            <input
                         value={orgForm.name}
                         onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
                         className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
                         placeholder="Your Organization Name"
                       />
-                    </div>
-                    <div>
+                                        </div>
+                                        <div>
                       <label className="block text-slate-300 text-sm mb-2">Subdomain</label>
                       <div className="flex">
-                        <input
+                                            <input
                           value={orgForm.subdomain}
                           onChange={(e) => setOrgForm({ ...orgForm, subdomain: e.target.value })}
                           className="flex-1 bg-slate-950/50 border border-white/10 rounded-l-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500"
@@ -458,47 +458,47 @@ export default function SettingsPage() {
                         </span>
                       </div>
                     </div>
-                  </div>
+                                        </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
                       <label className="block text-slate-300 text-sm mb-2 flex items-center gap-2">
                         <Mail size={14} /> Contact Email
                       </label>
-                      <input
+                                                <input
                         type="email"
                         value={orgForm.contact_email}
                         onChange={(e) => setOrgForm({ ...orgForm, contact_email: e.target.value })}
                         className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500"
                         placeholder="contact@yourcompany.com"
-                      />
-                    </div>
-                    <div>
+                                                />
+                                            </div>
+                                            <div>
                       <label className="block text-slate-300 text-sm mb-2 flex items-center gap-2">
                         <Phone size={14} /> Phone Number
                       </label>
-                      <input
+                                                <input
                         type="tel"
                         value={orgForm.contact_phone}
                         onChange={(e) => setOrgForm({ ...orgForm, contact_phone: e.target.value })}
                         className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500"
                         placeholder="+1 (555) 123-4567"
-                      />
-                    </div>
-                  </div>
+                                                />
+                                            </div>
+                                        </div>
 
-                  <div>
+                                        <div>
                     <label className="block text-slate-300 text-sm mb-2 flex items-center gap-2">
                       <Globe size={14} /> Website
                     </label>
-                    <input
+                                            <input
                       type="url"
                       value={orgForm.website}
                       onChange={(e) => setOrgForm({ ...orgForm, website: e.target.value })}
                       className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500"
                       placeholder="https://yourcompany.com"
-                    />
-                  </div>
+                                            />
+                                        </div>
 
                   <div>
                     <label className="block text-slate-300 text-sm mb-2 flex items-center gap-2">
@@ -510,7 +510,7 @@ export default function SettingsPage() {
                       className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-teal-500"
                       placeholder="123 Main St, City, State 12345"
                     />
-                  </div>
+                                    </div>
 
                   {/* Subscription Info (Read-only) */}
                   {organization && (
@@ -537,22 +537,22 @@ export default function SettingsPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-4 border-t border-white/10">
-                    <button
-                      type="submit"
+                                    <div className="flex justify-end pt-4 border-t border-white/10">
+                                        <button
+                                            type="submit"
                       disabled={saving}
                       className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
-                    >
+                                        >
                       {saving ? 'Saving...' : organization ? (
                         <><Save size={18} /> Save Changes</>
-                      ) : (
+                                            ) : (
                         <><Plus size={18} /> Create Organization</>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
+                                            )}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
 
             {/* User Management Tab */}
             {activeTab === 'users' && (
@@ -836,8 +836,8 @@ export default function SettingsPage() {
                     </Link>
                   </div>
                 </div>
-              </div>
-            )}
+                            </div>
+                        )}
 
             {/* Billing Tab */}
             {activeTab === 'billing' && (
@@ -965,13 +965,13 @@ export default function SettingsPage() {
                     <Link href="/billing" className="text-teal-400 hover:text-teal-300 text-sm">
                       View Billing Dashboard & Payment History →
                     </Link>
-                  </div>
+                    </div>
                 </div>
               </div>
             )}
           </div>
         </div>
-      </main>
-    </div>
-  )
+            </main>
+        </div>
+    )
 }
