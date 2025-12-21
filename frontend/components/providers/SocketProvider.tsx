@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useSession } from 'next-auth/react';
+import { useAuthContext } from './AuthProvider';
+import { tokenManager } from '@/lib/auth';
 
 interface SocketContextType {
     socket: Socket | null;
@@ -19,43 +20,48 @@ export const useSocket = () => useContext(SocketContext);
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
-    const { data: session } = useSession();
+    const { user, isAuth } = useAuthContext();
 
     useEffect(() => {
-        if (!session?.user) return;
+        if (!isAuth || !user) return;
 
-        // Initialize socket connection
-        const socketInstance = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-            auth: {
-                token: (session as any).accessToken // Assuming accessToken is available in session
-            },
+        const token = tokenManager.getToken();
+        if (!token) return;
+
+        // Initialize socket connection - use base URL (remove /api if present)
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const baseUrl = apiUrl.replace(/\/api\/?$/, '') || 'http://localhost:5000';
+        const socketInstance = io(baseUrl, {
+                auth: {
+                    token: token
+                },
             transports: ['websocket'],
-            reconnection: true,
+                reconnection: true,
             reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
-        });
+                reconnectionDelay: 1000,
+            });
 
-        socketInstance.on('connect', () => {
+            socketInstance.on('connect', () => {
             console.log('Socket connected:', socketInstance.id);
-            setIsConnected(true);
-        });
+                setIsConnected(true);
+            });
 
-        socketInstance.on('disconnect', () => {
-            console.log('Socket disconnected');
-            setIsConnected(false);
-        });
+            socketInstance.on('disconnect', () => {
+                console.log('Socket disconnected');
+                setIsConnected(false);
+            });
 
-        socketInstance.on('connect_error', (err) => {
+            socketInstance.on('connect_error', (err) => {
             console.error('Socket connection error:', err);
-            setIsConnected(false);
-        });
+                setIsConnected(false);
+            });
 
-        setSocket(socketInstance);
+            setSocket(socketInstance);
 
-        return () => {
-            socketInstance.disconnect();
-        };
-    }, [session]);
+            return () => {
+                socketInstance.disconnect();
+            };
+    }, [isAuth, user]);
 
     return (
         <SocketContext.Provider value={{ socket, isConnected }}>

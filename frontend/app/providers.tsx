@@ -1,14 +1,14 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
+import { AuthProvider } from '@/components/providers/AuthProvider';
 import { SocketProvider } from '@/components/providers/SocketProvider';
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
-        <SessionProvider>
+        <AuthProvider>
             <SocketProvider>
                 {children}
             </SocketProvider>
-        </SessionProvider>
+        </AuthProvider>
     );
 }

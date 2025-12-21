@@ -4,12 +4,52 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const db = require('./config/database');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Socket.io setup (if installed)
+let io = null;
+let server = null;
+
+try {
+  const { Server } = require('socket.io');
+  server = http.createServer(app);
+  
+  io = new Server(server, {
+    cors: {
+      origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+      methods: ["GET", "POST"],
+      credentials: true
+    }
+  });
+
+  // Socket.io connection handling
+  io.on('connection', (socket) => {
+    console.log('✅ Socket client connected:', socket.id);
+
+    socket.on('disconnect', () => {
+      console.log('❌ Socket client disconnected:', socket.id);
+    });
+
+    // Handle authentication
+    socket.on('authenticate', (token) => {
+      console.log('🔐 Socket authentication attempt');
+    });
+  });
+
+  // Make io available to routes
+  app.set('io', io);
+  console.log('✅ Socket.io initialized');
+} catch (error) {
+  // Fallback if socket.io not installed
+  console.warn('⚠️  Socket.io not installed, starting without WebSocket support');
+  server = http.createServer(app);
+}
 
 // CORS configuration - allow all Vercel deployments and localhost
 const corsOptions = {
@@ -407,7 +447,7 @@ async function startServer() {
 }
 
 // Start server
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   startServer().catch(err => {
     console.error('❌ Server startup failed:', err);
   });

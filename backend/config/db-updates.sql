@@ -40,7 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_agents_organization_id ON ai_agents(organizati
 -- PostgreSQL database dump
 --
 
-\restrict Gq0LJ3NVYvhbKKFc8eOP2WXvbbf5c5uTyHPBulRZ5JuSNlDb5VxtvciG04pnv3p
+-- \restrict Gq0LJ3NVYvhbKKFc8eOP2WXvbbf5c5uTyHPBulRZ5JuSNlDb5VxtvciG04pnv3p
+-- Commented out: pg_dump command, not valid SQL
 
 -- Dumped from database version 18.0
 -- Dumped by pg_dump version 18.0
@@ -48,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_agents_organization_id ON ai_agents(organizati
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
+-- SET transaction_timeout = 0;  -- Commented out: PostgreSQL 16+ only, not supported in older versions
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -4363,4 +4364,5 @@ ALTER TABLE ONLY public.webhooks
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Gq0LJ3NVYvhbKKFc8eOP2WXvbbf5c5uTyHPBulRZ5JuSNlDb5VxtvciG04pnv3p
+-- \unrestrict Gq0LJ3NVYvhbKKFc8eOP2WXvbbf5c5uTyHPBulRZ5JuSNlDb5VxtvciG04pnv3p
+-- Commented out: pg_dump command, not valid SQL

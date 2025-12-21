@@ -11,7 +11,6 @@ let poolConfig = {};
 if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
   };
   console.log('DB: using DATABASE_URL (present:', !!process.env.DATABASE_URL, ')');
 } else if (process.env.DB_HOST || process.env.DB_USER || process.env.DB_NAME) {
