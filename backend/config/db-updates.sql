@@ -81,8 +81,7 @@ CREATE TABLE public.access_policies (
 );
 
 
-ALTER TABLE public.access_policies OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: access_policies_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -96,8 +95,7 @@ CREATE SEQUENCE public.access_policies_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.access_policies_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: access_policies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -125,8 +123,7 @@ CREATE TABLE public.agent_performance (
 );
 
 
-ALTER TABLE public.agent_performance OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: agent_performance_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -140,8 +137,7 @@ CREATE SEQUENCE public.agent_performance_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.agent_performance_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: agent_performance_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -176,8 +172,7 @@ CREATE TABLE public.ai_agents (
 );
 
 
-ALTER TABLE public.ai_agents OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: ai_agents_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -191,8 +186,7 @@ CREATE SEQUENCE public.ai_agents_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.ai_agents_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: ai_agents_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -219,8 +213,7 @@ CREATE TABLE public.api_keys (
 );
 
 
-ALTER TABLE public.api_keys OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: api_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -234,8 +227,7 @@ CREATE SEQUENCE public.api_keys_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.api_keys_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: api_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -262,8 +254,7 @@ CREATE TABLE public.appointments (
 );
 
 
-ALTER TABLE public.appointments OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: appointments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -277,8 +268,7 @@ CREATE SEQUENCE public.appointments_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.appointments_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: appointments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -305,8 +295,7 @@ CREATE TABLE public.approval_records (
 );
 
 
-ALTER TABLE public.approval_records OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: approval_records_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -320,8 +309,7 @@ CREATE SEQUENCE public.approval_records_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.approval_records_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: approval_records_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -345,8 +333,7 @@ CREATE TABLE public.approval_workflows (
 );
 
 
-ALTER TABLE public.approval_workflows OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: approval_workflows_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -360,8 +347,7 @@ CREATE SEQUENCE public.approval_workflows_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.approval_workflows_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: approval_workflows_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -386,8 +372,7 @@ CREATE TABLE public.audit_logs (
 );
 
 
-ALTER TABLE public.audit_logs OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: audit_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -401,8 +386,7 @@ CREATE SEQUENCE public.audit_logs_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.audit_logs_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: audit_logs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -429,8 +413,7 @@ CREATE TABLE public.baa_agreements (
 );
 
 
-ALTER TABLE public.baa_agreements OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: baa_agreements_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -444,8 +427,7 @@ CREATE SEQUENCE public.baa_agreements_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.baa_agreements_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: baa_agreements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -473,8 +455,7 @@ CREATE TABLE public.branding_configs (
 );
 
 
-ALTER TABLE public.branding_configs OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: branding_configs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -488,8 +469,7 @@ CREATE SEQUENCE public.branding_configs_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.branding_configs_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: branding_configs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -522,8 +502,7 @@ CREATE TABLE public.call_logs (
 );
 
 
-ALTER TABLE public.call_logs OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -537,8 +516,7 @@ CREATE SEQUENCE public.call_logs_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.call_logs_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_logs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -567,8 +545,7 @@ CREATE TABLE public.call_metrics (
 );
 
 
-ALTER TABLE public.call_metrics OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_metrics_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -582,8 +559,7 @@ CREATE SEQUENCE public.call_metrics_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.call_metrics_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_metrics_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -612,8 +588,7 @@ CREATE TABLE public.call_recordings (
 );
 
 
-ALTER TABLE public.call_recordings OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_recordings_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -627,8 +602,7 @@ CREATE SEQUENCE public.call_recordings_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.call_recordings_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: call_recordings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -664,8 +638,7 @@ CREATE TABLE public.change_control_log (
 );
 
 
-ALTER TABLE public.change_control_log OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: change_control_log_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -679,8 +652,7 @@ CREATE SEQUENCE public.change_control_log_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.change_control_log_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: change_control_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -710,8 +682,7 @@ CREATE TABLE public.consent_records (
 );
 
 
-ALTER TABLE public.consent_records OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: consent_records_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -725,8 +696,7 @@ CREATE SEQUENCE public.consent_records_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.consent_records_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: consent_records_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -754,8 +724,7 @@ CREATE TABLE public.constraint_violations (
 );
 
 
-ALTER TABLE public.constraint_violations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: constraint_violations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -769,8 +738,7 @@ CREATE SEQUENCE public.constraint_violations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.constraint_violations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: constraint_violations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -798,8 +766,7 @@ CREATE TABLE public.constraints (
 );
 
 
-ALTER TABLE public.constraints OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: constraints_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -813,8 +780,7 @@ CREATE SEQUENCE public.constraints_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.constraints_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: constraints_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -840,8 +806,7 @@ CREATE TABLE public.conversations (
 );
 
 
-ALTER TABLE public.conversations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: conversations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -855,8 +820,7 @@ CREATE SEQUENCE public.conversations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.conversations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: conversations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -879,8 +843,7 @@ CREATE TABLE public.deliverable_milestones (
 );
 
 
-ALTER TABLE public.deliverable_milestones OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: deliverable_milestones_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -894,8 +857,7 @@ CREATE SEQUENCE public.deliverable_milestones_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.deliverable_milestones_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: deliverable_milestones_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -928,8 +890,7 @@ CREATE TABLE public.deliverables (
 );
 
 
-ALTER TABLE public.deliverables OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: deliverables_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -943,8 +904,7 @@ CREATE SEQUENCE public.deliverables_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.deliverables_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: deliverables_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -974,8 +934,7 @@ CREATE TABLE public.ehr_systems (
 );
 
 
-ALTER TABLE public.ehr_systems OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: ehr_systems_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -989,8 +948,7 @@ CREATE SEQUENCE public.ehr_systems_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.ehr_systems_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: ehr_systems_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1016,8 +974,7 @@ CREATE TABLE public.encryption_keys (
 );
 
 
-ALTER TABLE public.encryption_keys OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: encryption_keys_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1031,8 +988,7 @@ CREATE SEQUENCE public.encryption_keys_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.encryption_keys_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: encryption_keys_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1060,8 +1016,7 @@ CREATE TABLE public.fhir_connectors (
 );
 
 
-ALTER TABLE public.fhir_connectors OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: fhir_connectors_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1075,8 +1030,7 @@ CREATE SEQUENCE public.fhir_connectors_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.fhir_connectors_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: fhir_connectors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1104,8 +1058,7 @@ CREATE TABLE public.generated_reports (
 );
 
 
-ALTER TABLE public.generated_reports OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: generated_reports_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1119,8 +1072,7 @@ CREATE SEQUENCE public.generated_reports_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.generated_reports_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: generated_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1148,8 +1100,7 @@ CREATE TABLE public.hl7_connectors (
 );
 
 
-ALTER TABLE public.hl7_connectors OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: hl7_connectors_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1163,8 +1114,7 @@ CREATE SEQUENCE public.hl7_connectors_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.hl7_connectors_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: hl7_connectors_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1191,8 +1141,7 @@ CREATE TABLE public.integrations (
 );
 
 
-ALTER TABLE public.integrations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: integrations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1206,8 +1155,7 @@ CREATE SEQUENCE public.integrations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.integrations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: integrations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1231,8 +1179,7 @@ CREATE TABLE public.key_rotation_log (
 );
 
 
-ALTER TABLE public.key_rotation_log OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: key_rotation_log_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1246,8 +1193,7 @@ CREATE SEQUENCE public.key_rotation_log_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.key_rotation_log_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: key_rotation_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1276,8 +1222,7 @@ CREATE TABLE public.nlu_configurations (
 );
 
 
-ALTER TABLE public.nlu_configurations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: nlu_configurations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1291,8 +1236,7 @@ CREATE SEQUENCE public.nlu_configurations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.nlu_configurations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: nlu_configurations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1318,8 +1262,7 @@ CREATE TABLE public.operational_assumptions (
 );
 
 
-ALTER TABLE public.operational_assumptions OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: operational_assumptions_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1333,8 +1276,7 @@ CREATE SEQUENCE public.operational_assumptions_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.operational_assumptions_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: operational_assumptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1361,8 +1303,7 @@ CREATE TABLE public.organizations (
 );
 
 
-ALTER TABLE public.organizations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: organizations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1376,8 +1317,7 @@ CREATE SEQUENCE public.organizations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.organizations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: organizations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1398,8 +1338,7 @@ CREATE TABLE public.permissions (
 );
 
 
-ALTER TABLE public.permissions OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1413,8 +1352,7 @@ CREATE SEQUENCE public.permissions_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.permissions_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: permissions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1440,8 +1378,7 @@ CREATE TABLE public.phone_numbers (
 );
 
 
-ALTER TABLE public.phone_numbers OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: phone_numbers_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1455,8 +1392,7 @@ CREATE SEQUENCE public.phone_numbers_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.phone_numbers_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: phone_numbers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1481,8 +1417,7 @@ CREATE TABLE public.portals (
 );
 
 
-ALTER TABLE public.portals OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: portals_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1496,8 +1431,7 @@ CREATE SEQUENCE public.portals_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.portals_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: portals_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1524,8 +1458,7 @@ CREATE TABLE public.reading_guidance (
 );
 
 
-ALTER TABLE public.reading_guidance OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: reading_guidance_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1539,8 +1472,7 @@ CREATE SEQUENCE public.reading_guidance_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.reading_guidance_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: reading_guidance_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1569,8 +1501,7 @@ CREATE TABLE public.reference_standards (
 );
 
 
-ALTER TABLE public.reference_standards OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: reference_standards_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1584,8 +1515,7 @@ CREATE SEQUENCE public.reference_standards_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.reference_standards_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: reference_standards_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1613,8 +1543,7 @@ CREATE TABLE public.report_templates (
 );
 
 
-ALTER TABLE public.report_templates OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: report_templates_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1628,8 +1557,7 @@ CREATE SEQUENCE public.report_templates_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.report_templates_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: report_templates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1650,8 +1578,7 @@ CREATE TABLE public.requirement_dependencies (
 );
 
 
-ALTER TABLE public.requirement_dependencies OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirement_dependencies_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1665,8 +1592,7 @@ CREATE SEQUENCE public.requirement_dependencies_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.requirement_dependencies_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirement_dependencies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1690,8 +1616,7 @@ CREATE TABLE public.requirement_verifications (
 );
 
 
-ALTER TABLE public.requirement_verifications OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirement_verifications_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1705,8 +1630,7 @@ CREATE SEQUENCE public.requirement_verifications_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.requirement_verifications_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirement_verifications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1741,8 +1665,7 @@ CREATE TABLE public.requirements (
 );
 
 
-ALTER TABLE public.requirements OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirements_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1756,8 +1679,7 @@ CREATE SEQUENCE public.requirements_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.requirements_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: requirements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1781,8 +1703,7 @@ CREATE TABLE public.retention_policies (
 );
 
 
-ALTER TABLE public.retention_policies OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: retention_policies_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1796,8 +1717,7 @@ CREATE SEQUENCE public.retention_policies_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.retention_policies_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: retention_policies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1816,8 +1736,7 @@ CREATE TABLE public.role_permissions (
 );
 
 
-ALTER TABLE public.role_permissions OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: role_permissions_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1831,8 +1750,7 @@ CREATE SEQUENCE public.role_permissions_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.role_permissions_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: role_permissions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1859,8 +1777,7 @@ CREATE TABLE public.sdks (
 );
 
 
-ALTER TABLE public.sdks OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: sdks_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1874,8 +1791,7 @@ CREATE SEQUENCE public.sdks_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.sdks_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: sdks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1906,8 +1822,7 @@ CREATE TABLE public.srs_documents (
 );
 
 
-ALTER TABLE public.srs_documents OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_documents_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1921,8 +1836,7 @@ CREATE SEQUENCE public.srs_documents_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.srs_documents_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_documents_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1946,8 +1860,7 @@ CREATE TABLE public.srs_section_templates (
 );
 
 
-ALTER TABLE public.srs_section_templates OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_section_templates_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -1961,8 +1874,7 @@ CREATE SEQUENCE public.srs_section_templates_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.srs_section_templates_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_section_templates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -1985,8 +1897,7 @@ CREATE TABLE public.srs_versions (
 );
 
 
-ALTER TABLE public.srs_versions OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_versions_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2000,8 +1911,7 @@ CREATE SEQUENCE public.srs_versions_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.srs_versions_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: srs_versions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2023,8 +1933,7 @@ CREATE TABLE public.stakeholder_types (
 );
 
 
-ALTER TABLE public.stakeholder_types OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: stakeholder_types_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2038,8 +1947,7 @@ CREATE SEQUENCE public.stakeholder_types_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.stakeholder_types_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: stakeholder_types_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2067,8 +1975,7 @@ CREATE TABLE public.stt_configurations (
 );
 
 
-ALTER TABLE public.stt_configurations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: stt_configurations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2082,8 +1989,7 @@ CREATE SEQUENCE public.stt_configurations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.stt_configurations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: stt_configurations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2109,8 +2015,7 @@ CREATE TABLE public.terminology (
 );
 
 
-ALTER TABLE public.terminology OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: terminology_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2124,8 +2029,7 @@ CREATE SEQUENCE public.terminology_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.terminology_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: terminology_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2155,8 +2059,7 @@ CREATE TABLE public.tts_configurations (
 );
 
 
-ALTER TABLE public.tts_configurations OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: tts_configurations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2170,8 +2073,7 @@ CREATE SEQUENCE public.tts_configurations_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.tts_configurations_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: tts_configurations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2203,8 +2105,7 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2218,8 +2119,7 @@ CREATE SEQUENCE public.users_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.users_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2243,8 +2143,7 @@ CREATE TABLE public.voice_channels (
 );
 
 
-ALTER TABLE public.voice_channels OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: voice_channels_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2258,8 +2157,7 @@ CREATE SEQUENCE public.voice_channels_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.voice_channels_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: voice_channels_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2287,8 +2185,7 @@ CREATE TABLE public.webhook_events (
 );
 
 
-ALTER TABLE public.webhook_events OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: webhook_events_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2302,8 +2199,7 @@ CREATE SEQUENCE public.webhook_events_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.webhook_events_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: webhook_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
@@ -2329,8 +2225,7 @@ CREATE TABLE public.webhooks (
 );
 
 
-ALTER TABLE public.webhooks OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: webhooks_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
@@ -2344,8 +2239,7 @@ CREATE SEQUENCE public.webhooks_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.webhooks_id_seq OWNER TO postgres;
-
+-- OWNER TO postgres removed (not needed, requires superuser)
 --
 -- Name: webhooks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --

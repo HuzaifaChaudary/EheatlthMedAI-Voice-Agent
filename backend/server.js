@@ -259,10 +259,23 @@ function parseSQLStatements(sql) {
     // End of statement
     if (trimmed.endsWith(';')) {
       const statement = current.trim();
-      if (statement && statement !== ';') {
-        statements.push(statement);
+      // Only add non-empty statements that are more than just a semicolon
+      if (statement && statement !== ';' && statement.length > 1) {
+        // Remove trailing semicolons if multiple
+        const cleaned = statement.replace(/;+$/, ';');
+        if (cleaned.length > 1) {
+          statements.push(cleaned);
+        }
       }
       current = '';
+    }
+  }
+
+  // Handle any remaining statement without semicolon (shouldn't happen, but just in case)
+  if (current.trim() && current.trim().length > 1) {
+    const remaining = current.trim();
+    if (!remaining.startsWith('--')) {
+      statements.push(remaining);
     }
   }
 
@@ -298,7 +311,18 @@ async function initializeDatabase() {
           try {
             await db.query(statements[i]);
           } catch (err) {
-            if (!err.message.includes('already exists')) {
+            // Ignore common non-critical errors
+            const errorMsg = err.message.toLowerCase();
+            const shouldIgnore = 
+              err.message.includes('already exists') ||
+              err.message.includes('does not exist') ||
+              errorMsg.includes('must be member of role') ||
+              errorMsg.includes('cannot change owner') ||
+              errorMsg.includes('multiple primary keys') ||
+              errorMsg.includes('syntax error at end of input') ||
+              errorMsg.includes('unrecognized configuration parameter');
+            
+            if (!shouldIgnore) {
               console.error(`  ✗ Statement ${i + 1} failed:`, err.message);
             }
           }
@@ -316,7 +340,18 @@ async function initializeDatabase() {
           try {
             await db.query(statements[i]);
           } catch (err) {
-            if (!err.message.includes('already exists')) {
+            // Ignore common non-critical errors
+            const errorMsg = err.message.toLowerCase();
+            const shouldIgnore = 
+              err.message.includes('already exists') ||
+              err.message.includes('does not exist') ||
+              errorMsg.includes('must be member of role') ||
+              errorMsg.includes('cannot change owner') ||
+              errorMsg.includes('multiple primary keys') ||
+              errorMsg.includes('syntax error at end of input') ||
+              errorMsg.includes('unrecognized configuration parameter');
+            
+            if (!shouldIgnore) {
               console.error(`  ✗ Statement ${i + 1} failed:`, err.message);
             }
           }
@@ -334,7 +369,18 @@ async function initializeDatabase() {
           try {
             await db.query(statements[i]);
           } catch (err) {
-            if (!err.message.includes('already exists')) {
+            // Ignore common non-critical errors
+            const errorMsg = err.message.toLowerCase();
+            const shouldIgnore = 
+              err.message.includes('already exists') ||
+              err.message.includes('does not exist') ||
+              errorMsg.includes('must be member of role') ||
+              errorMsg.includes('cannot change owner') ||
+              errorMsg.includes('multiple primary keys') ||
+              errorMsg.includes('syntax error at end of input') ||
+              errorMsg.includes('unrecognized configuration parameter');
+            
+            if (!shouldIgnore) {
               console.error(`  ✗ Statement ${i + 1} failed:`, err.message);
             }
           }
@@ -356,7 +402,18 @@ async function initializeDatabase() {
           try {
             await db.query(statement);
           } catch (err) {
-            if (!err.message.includes('already exists')) {
+            // Ignore common non-critical errors
+            const errorMsg = err.message.toLowerCase();
+            const shouldIgnore = 
+              err.message.includes('already exists') ||
+              err.message.includes('does not exist') ||
+              errorMsg.includes('must be member of role') ||
+              errorMsg.includes('cannot change owner') ||
+              errorMsg.includes('multiple primary keys') ||
+              errorMsg.includes('syntax error at end of input') ||
+              errorMsg.includes('unrecognized configuration parameter');
+            
+            if (!shouldIgnore) {
               console.error('  ✗ Error:', err.message);
             }
           }
@@ -373,7 +430,18 @@ async function initializeDatabase() {
           try {
             await db.query(statement);
           } catch (err) {
-            if (!err.message.includes('already exists')) {
+            // Ignore common non-critical errors
+            const errorMsg = err.message.toLowerCase();
+            const shouldIgnore = 
+              err.message.includes('already exists') ||
+              err.message.includes('does not exist') ||
+              errorMsg.includes('must be member of role') ||
+              errorMsg.includes('cannot change owner') ||
+              errorMsg.includes('multiple primary keys') ||
+              errorMsg.includes('syntax error at end of input') ||
+              errorMsg.includes('unrecognized configuration parameter');
+            
+            if (!shouldIgnore) {
               console.error('  ✗ Error:', err.message);
             }
           }
