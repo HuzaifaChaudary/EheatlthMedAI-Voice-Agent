@@ -17,6 +17,10 @@ const createRateLimiter = (windowMs, maxRequests, message) => {
       if (req.path === '/api/health') {
         return true;
       }
+      // Skip rate limiting for auth endpoints (disabled)
+      if (req.path.startsWith('/api/auth')) {
+        return true;
+      }
       // In development, skip rate limiting for localhost
       if (isDevelopment && (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1')) {
         return true;
@@ -33,10 +37,10 @@ const apiLimiter = createRateLimiter(
   'Too many requests, please try again later.'
 );
 
-// Strict rate limiter for auth endpoints (more lenient in development)
+// Strict rate limiter for auth endpoints - DISABLED (no rate limiting)
 const authLimiter = createRateLimiter(
   15 * 60 * 1000,
-  isDevelopment ? 1000 : 5, // 1,000 in dev, 5 in production
+  999999, // Effectively unlimited - no rate limiting
   'Too many authentication attempts, please try again later.'
 );
 
