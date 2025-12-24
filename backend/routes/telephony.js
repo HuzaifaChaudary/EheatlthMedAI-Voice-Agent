@@ -7,8 +7,71 @@ const callControlService = require('../services/callControlService');
 const voicemailService = require('../services/voicemailService');
 const router = express.Router();
 
+// Test endpoint to verify routing works
+router.get('/test-search', (req, res) => {
+  res.json({ message: 'Test search endpoint works!' });
+});
+
+// Search available phone numbers from Twilio
+// IMPORTANT: This route must come BEFORE /phone-numbers to avoid route conflicts
+router.get('/phone-numbers/search', authenticateToken, async (req, res) => {
+  console.log('🔍 Phone number search endpoint hit!');
+  console.log('  Query params:', req.query);
+  console.log('  User:', req.user?.id);
+  console.log('  Path:', req.path);
+  console.log('  Original URL:', req.originalUrl);
+  try {
+    const { area_code, country_code = 'US', limit = 20 } = req.query;
+
+    if (!area_code) {
+      console.log('❌ Missing area_code');
+      return res.status(400).json({ message: 'Area code is required' });
+    }
+
+    // Get Twilio client
+    const twilio = require('twilio');
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+
+    if (!accountSid || !authToken) {
+      return res.status(500).json({ message: 'Twilio is not configured' });
+    }
+
+    const client = twilio(accountSid, authToken);
+
+    // Search available phone numbers
+    const availableNumbers = await client.availablePhoneNumbers(country_code)
+      .local
+      .list({
+        areaCode: parseInt(area_code),
+        limit: parseInt(limit)
+      });
+
+    const numbers = availableNumbers.map(num => ({
+      phone_number: num.phoneNumber,
+      friendly_name: num.friendlyName,
+      locality: num.locality,
+      region: num.region,
+      postal_code: num.postalCode,
+      capabilities: {
+        voice: num.capabilities.voice,
+        sms: num.capabilities.SMS,
+        mms: num.capabilities.MMS
+      },
+      monthly_cost: num.capabilities.voice ? 1.00 : 0.00 // Default cost
+    }));
+
+    res.json({ available_numbers: numbers });
+  } catch (error) {
+    console.error('Error searching phone numbers:', error);
+    res.status(500).json({ message: 'Error searching phone numbers', error: error.message });
+  }
+});
+
 // Get all phone numbers for organization
+// IMPORTANT: This route must come AFTER /phone-numbers/search to avoid route conflicts
 router.get('/phone-numbers', authenticateToken, async (req, res) => {
+  console.log('📞 Phone numbers list endpoint hit (NOT search)');
   try {
     const orgResult = await db.query(
       'SELECT organization_id FROM users WHERE id = $1',
@@ -16,24 +79,100 @@ router.get('/phone-numbers', authenticateToken, async (req, res) => {
     );
 
     if (orgResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Organization not found' });
+      return res.json({ phone_numbers: [] }); // Return empty array instead of 404
     }
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
 
-    const result = await db.query(
-      'SELECT * FROM phone_numbers WHERE organization_id = $1 ORDER BY created_at DESC',
-      [orgId]
-    );
+    // Handle both cases: with organization_id and without (null)
+    let result;
+    if (orgId) {
+      result = await db.query(
+        'SELECT * FROM phone_numbers WHERE organization_id = $1 ORDER BY created_at DESC',
+        [orgId]
+      );
+    } else {
+      // If user has no organization_id, show all phone numbers with null organization_id
+      result = await db.query(
+        'SELECT * FROM phone_numbers WHERE organization_id IS NULL ORDER BY created_at DESC'
+      );
+    }
 
     res.json({ phone_numbers: result.rows });
   } catch (error) {
     console.error('Error fetching phone numbers:', error);
-    res.status(500).json({ message: 'Error fetching phone numbers' });
+    res.status(500).json({ message: 'Error fetching phone numbers', error: error.message });
   }
 });
 
-// Add phone number
+// Purchase phone number from Twilio
+router.post('/phone-numbers/purchase', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { phone_number, capabilities } = req.body;
+
+    if (!phone_number) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0]?.organization_id || null;
+
+    // Get Twilio client
+    const twilio = require('twilio');
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+
+    if (!accountSid || !authToken) {
+      return res.status(500).json({ message: 'Twilio is not configured' });
+    }
+
+    const client = twilio(accountSid, authToken);
+
+    // Purchase the phone number from Twilio
+    const purchasedNumber = await client.incomingPhoneNumbers.create({
+      phoneNumber: phone_number,
+      voiceUrl: `${process.env.API_URL || process.env.FRONTEND_URL || 'http://localhost:5000'}/api/telephony/twilio/inbound`,
+      smsUrl: `${process.env.API_URL || process.env.FRONTEND_URL || 'http://localhost:5000'}/api/telephony/twilio/sms`,
+      statusCallback: `${process.env.API_URL || process.env.FRONTEND_URL || 'http://localhost:5000'}/api/telephony/twilio/status`,
+      statusCallbackMethod: 'POST'
+    });
+
+    // Save to database
+    const result = await db.query(
+      `INSERT INTO phone_numbers (organization_id, phone_number, provider, provider_sid, capabilities, monthly_cost, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        orgId,
+        purchasedNumber.phoneNumber,
+        'twilio',
+        purchasedNumber.sid,
+        JSON.stringify(capabilities || purchasedNumber.capabilities || { voice: true, sms: true }),
+        1.00, // Default monthly cost
+        true
+      ]
+    );
+
+    res.status(201).json({ 
+      phone_number: result.rows[0],
+      twilio_sid: purchasedNumber.sid,
+      message: 'Phone number purchased and added successfully'
+    });
+  } catch (error) {
+    console.error('Error purchasing phone number:', error);
+    res.status(500).json({ message: 'Error purchasing phone number', error: error.message });
+  }
+});
+
+// Add phone number (Bring Your Own Number - BYON)
 router.post('/phone-numbers', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -45,21 +184,31 @@ router.post('/phone-numbers', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
 
     const { phone_number, provider, provider_sid, capabilities, monthly_cost } = req.body;
 
+    if (!phone_number) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
     const result = await db.query(
-      `INSERT INTO phone_numbers (organization_id, phone_number, provider, provider_sid, capabilities, monthly_cost)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO phone_numbers (organization_id, phone_number, provider, provider_sid, capabilities, monthly_cost, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [orgId, phone_number, provider, provider_sid, JSON.stringify(capabilities || {}), monthly_cost]
+      [orgId, phone_number, provider || 'twilio', provider_sid, JSON.stringify(capabilities || { voice: true, sms: true }), monthly_cost || null, true]
     );
 
-    res.status(201).json({ phone_number: result.rows[0] });
+    res.status(201).json({ 
+      phone_number: result.rows[0],
+      message: 'Phone number added successfully'
+    });
   } catch (error) {
     console.error('Error creating phone number:', error);
-    res.status(500).json({ message: 'Error creating phone number' });
+    if (error.code === '23505') {
+      return res.status(400).json({ message: 'This phone number already exists' });
+    }
+    res.status(500).json({ message: 'Error creating phone number', error: error.message });
   }
 });
 
@@ -74,7 +223,7 @@ router.get('/calls', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
 
     let query = `
       SELECT cl.*, aa.name as agent_name, aa.type as agent_type, pn.phone_number
@@ -143,7 +292,7 @@ router.post('/calls', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
 
     const {
       phone_number_id,
@@ -199,7 +348,7 @@ router.post('/calls/make', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
 
     const { phone_number_id, to, agent_id } = req.body;
 
@@ -627,7 +776,7 @@ router.post('/sms/send', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { to, from, message, conversation_id } = req.body;
 
     if (!to || !message) {
@@ -657,7 +806,7 @@ router.get('/sms', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { conversation_id, direction, start_date, end_date, page = 1, limit = 50 } = req.query;
 
     const messages = await smsService.getSMSMessages(orgId, {
@@ -690,7 +839,7 @@ router.post('/calls/:callSid/transfer', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { callSid } = req.params;
     const { to, from } = req.body;
 
@@ -720,7 +869,7 @@ router.post('/calls/:callSid/hold', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { callSid } = req.params;
     const { hold_music } = req.body;
 
@@ -745,7 +894,7 @@ router.post('/calls/:callSid/mute', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { callSid } = req.params;
     const { mute = true } = req.body;
 
@@ -770,7 +919,7 @@ router.post('/calls/:callSid/hangup', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { callSid } = req.params;
 
     const result = await callControlService.hangupCall({
@@ -793,7 +942,7 @@ router.get('/calls/:callSid/status', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { callSid } = req.params;
 
     const result = await callControlService.getCallStatus({
@@ -817,7 +966,7 @@ router.get('/recordings', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { call_log_id, start_date, end_date, page = 1, limit = 50 } = req.query;
 
     let query = `
@@ -874,7 +1023,7 @@ router.get('/voicemails', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { status, start_date, end_date, page = 1, limit = 50 } = req.query;
 
     const voicemails = await voicemailService.getVoicemails(orgId, {
@@ -900,7 +1049,7 @@ router.patch('/voicemails/:id/read', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { id } = req.params;
 
     const result = await voicemailService.markVoicemailAsRead(id, orgId);
@@ -919,7 +1068,7 @@ router.delete('/voicemails/:id', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    const orgId = orgResult.rows[0]?.organization_id || null;
     const { id } = req.params;
 
     const result = await voicemailService.deleteVoicemail(id, orgId);

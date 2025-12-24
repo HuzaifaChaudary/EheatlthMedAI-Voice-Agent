@@ -21,7 +21,15 @@ interface Agent {
   voice_model: string
   system_prompt: string
   temperature: number
+  phone_number_id: number | null
   updated_at: string
+}
+
+interface PhoneNumber {
+  id: number
+  phone_number: string
+  provider: string
+  is_active: boolean
 }
 
 interface Integration {
@@ -67,17 +75,37 @@ export default function AgentConfigurationPage() {
   // Simulate call modal
   const [showSimulateModal, setShowSimulateModal] = useState(false)
 
+  // Phone numbers state
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
+  const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
+
   // Form state
   const [prompt, setPrompt] = useState('')
   const [isActive, setIsActive] = useState(false)
   const [voiceModel, setVoiceModel] = useState('openai')
+  const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState<string | number>('')
   const [selectedCalendarProvider, setSelectedCalendarProvider] = useState('off')
   const [selectedEhrProvider, setSelectedEhrProvider] = useState('off')
 
   useEffect(() => {
     fetchAgent()
     fetchIntegrations()
+    fetchPhoneNumbers()
   }, [params.agentId])
+
+  const fetchPhoneNumbers = async () => {
+    try {
+      setLoadingPhoneNumbers(true)
+      const response = await get('/telephony/phone-numbers')
+      if (response.data?.phone_numbers) {
+        setPhoneNumbers(response.data.phone_numbers.filter((pn: PhoneNumber) => pn.is_active))
+      }
+    } catch (error) {
+      console.error('Error fetching phone numbers:', error)
+    } finally {
+      setLoadingPhoneNumbers(false)
+    }
+  }
 
   const fetchAgent = async () => {
     try {
@@ -88,6 +116,7 @@ export default function AgentConfigurationPage() {
         setPrompt(data.system_prompt || '')
         setIsActive(data.is_active)
         setVoiceModel(data.voice_model || 'openai')
+        setSelectedPhoneNumberId(data.phone_number_id || '')
       } else {
         setError('Agent not found')
       }
@@ -159,7 +188,8 @@ export default function AgentConfigurationPage() {
       const response = await put(`/agents/${params.agentId}`, {
         system_prompt: prompt,
         is_active: isActive,
-        voice_model: voiceModel
+        voice_model: voiceModel,
+        phone_number_id: selectedPhoneNumberId || null
       })
 
       if (response.error) {
@@ -464,6 +494,39 @@ export default function AgentConfigurationPage() {
                       <option value="deepgram">Deepgram</option>
                       <option value="elevenlabs">ElevenLabs</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2 flex items-center">
+                      <Phone className="mr-2 text-teal-400" size={16} />
+                      Linked Phone Number
+                    </label>
+                    <select
+                      value={selectedPhoneNumberId}
+                      onChange={(e) => setSelectedPhoneNumberId(e.target.value || '')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
+                    >
+                      <option value="">No phone number (unlink)</option>
+                      {loadingPhoneNumbers ? (
+                        <option disabled>Loading phone numbers...</option>
+                      ) : phoneNumbers.length === 0 ? (
+                        <option disabled>No phone numbers available. Add one in Telephony page.</option>
+                      ) : (
+                        phoneNumbers.map((pn) => (
+                          <option key={pn.id} value={pn.id}>
+                            {pn.phone_number} ({pn.provider})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-2">
+                      When calls come to this number, this agent will automatically answer.
+                    </p>
+                    {phoneNumbers.length === 0 && (
+                      <Link href="/telephony" className="text-xs text-teal-400 hover:text-teal-300 mt-1 block">
+                        Add phone number →
+                      </Link>
+                    )}
                   </div>
 
                   <div>

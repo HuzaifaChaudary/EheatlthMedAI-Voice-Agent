@@ -235,9 +235,12 @@ app.use((err, req, res, next) => {
 
 // 404 handler
 app.use((req, res) => {
+  console.log('❌ 404 - Endpoint not found:', req.method, req.path);
+  console.log('   Full URL:', req.url);
   res.status(404).json({
     message: 'Endpoint not found',
-    path: req.path
+    path: req.path,
+    method: req.method
   });
 });
 

@@ -1,24 +1,52 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, Save } from 'lucide-react'
-import { post } from '@/lib/api'
+import { ChevronLeft, Save, Phone } from 'lucide-react'
+import { post, get } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+
+interface PhoneNumber {
+  id: number
+  phone_number: string
+  provider: string
+  is_active: boolean
+}
 
 export default function CreateAgentPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
+    const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
 
     const [formData, setFormData] = useState({
         name: '',
         type: 'Front Desk Assistant', // Default
         description: '',
-        voice_model: 'openai'
+        voice_model: 'openai',
+        phone_number_id: '' as string | number
     })
+
+    useEffect(() => {
+        fetchPhoneNumbers()
+    }, [])
+
+    const fetchPhoneNumbers = async () => {
+        try {
+            setLoadingPhoneNumbers(true)
+            const response = await get('/telephony/phone-numbers')
+            if (response.data?.phone_numbers) {
+                setPhoneNumbers(response.data.phone_numbers.filter((pn: PhoneNumber) => pn.is_active))
+            }
+        } catch (error) {
+            console.error('Error fetching phone numbers:', error)
+        } finally {
+            setLoadingPhoneNumbers(false)
+        }
+    }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -36,6 +64,7 @@ export default function CreateAgentPage() {
                 type: formData.type,
                 description: formData.description,
                 voice_model: formData.voice_model,
+                phone_number_id: formData.phone_number_id || null,
                 is_active: true,
                 configuration: {}, // Empty default config
                 system_prompt: `You are a helpful ${formData.type}.` // Simple default prompt
@@ -138,6 +167,40 @@ export default function CreateAgentPage() {
                                     <option value="deepgram">Deepgram</option>
                                     <option value="elevenlabs">ElevenLabs</option>
                                 </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-300 text-sm mb-2 flex items-center">
+                                    <Phone size={16} className="mr-2 text-teal-400" />
+                                    Link to Phone Number
+                                </label>
+                                <select
+                                    name="phone_number_id"
+                                    value={formData.phone_number_id}
+                                    onChange={handleChange}
+                                    className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-teal-500 transition-colors"
+                                >
+                                    <option value="">No phone number (link later)</option>
+                                    {loadingPhoneNumbers ? (
+                                        <option disabled>Loading phone numbers...</option>
+                                    ) : phoneNumbers.length === 0 ? (
+                                        <option disabled>No phone numbers available. Add one in Telephony page first.</option>
+                                    ) : (
+                                        phoneNumbers.map((pn) => (
+                                            <option key={pn.id} value={pn.id}>
+                                                {pn.phone_number} ({pn.provider})
+                                            </option>
+                                        ))
+                                    )}
+                                </select>
+                                <p className="text-xs text-slate-400 mt-2">
+                                    Select which phone number this agent should handle. When calls come to this number, this agent will automatically answer.
+                                </p>
+                                {phoneNumbers.length === 0 && (
+                                    <Link href="/telephony" className="text-xs text-teal-400 hover:text-teal-300 mt-1 block">
+                                        Go to Telephony page to add a phone number →
+                                    </Link>
+                                )}
                             </div>
 
                             <div className="pt-6 flex justify-end space-x-4 border-t border-white/10">

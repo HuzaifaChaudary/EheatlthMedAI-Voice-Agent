@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { get, post } from '@/lib/api'
+import { get, post, put } from '@/lib/api'
 import { isAuthenticated } from '@/lib/auth'
 
 interface PhoneNumber {
@@ -70,13 +70,22 @@ export default function TelephonyPage() {
   })
   const [agents, setAgents] = useState<any[]>([])
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false)
+  const [phoneNumberMode, setPhoneNumberMode] = useState<'purchase' | 'byon'>('purchase')
   const [addPhoneForm, setAddPhoneForm] = useState({
     phone_number: '',
     provider: 'twilio',
     provider_sid: '',
     capabilities: { voice: true, sms: true, mms: false },
-    monthly_cost: ''
+    monthly_cost: '',
+    agent_id: ''
   })
+  const [areaCode, setAreaCode] = useState('')
+  const [availableNumbers, setAvailableNumbers] = useState<any[]>([])
+  const [searchingNumbers, setSearchingNumbers] = useState(false)
+  const [purchasingNumber, setPurchasingNumber] = useState(false)
+  const [selectedNumberToPurchase, setSelectedNumberToPurchase] = useState<string>('')
+  const [purchaseStep, setPurchaseStep] = useState<'search' | 'select' | 'link'>('search')
+  const [purchasedNumberId, setPurchasedNumberId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -133,11 +142,19 @@ export default function TelephonyPage() {
   const fetchPhoneNumbers = async () => {
     try {
       const response = await get('/telephony/phone-numbers')
+      if (response.error) {
+        console.error('Error fetching phone numbers:', response.error)
+        setPhoneNumbers([])
+        return
+      }
       if (response.data?.phone_numbers) {
         setPhoneNumbers(response.data.phone_numbers)
+      } else {
+        setPhoneNumbers([])
       }
     } catch (error) {
       console.error('Error fetching phone numbers:', error)
+      setPhoneNumbers([])
     }
   }
 
@@ -175,31 +192,140 @@ export default function TelephonyPage() {
     }
   }
 
+  const handleSearchAvailableNumbers = async () => {
+    if (!areaCode || areaCode.length !== 3) {
+      alert('Please enter a valid 3-digit area code')
+      return
+    }
+    try {
+      setSearchingNumbers(true)
+      const response = await get(`/telephony/phone-numbers/search?area_code=${areaCode}&limit=20`)
+      if (response.error) {
+        console.error('Search error:', response.error)
+        alert(`Error: ${response.error}`)
+        return
+      }
+      if (!response.ok) {
+        console.error('Search failed:', response)
+        alert(`Error: ${response.error || 'Failed to search phone numbers'}`)
+        return
+      }
+      if (response.data?.available_numbers) {
+        setAvailableNumbers(response.data.available_numbers)
+        setPurchaseStep('select')
+      } else {
+        alert('No phone numbers available for this area code')
+      }
+    } catch (error: any) {
+      console.error('Search exception:', error)
+      alert(`Error searching numbers: ${error.message || 'Unknown error'}`)
+    } finally {
+      setSearchingNumbers(false)
+    }
+  }
+
+  const handlePurchaseNumber = async () => {
+    if (!selectedNumberToPurchase) {
+      alert('Please select a phone number to purchase')
+      return
+    }
+    try {
+      setPurchasingNumber(true)
+      const selectedNumber = availableNumbers.find(n => n.phone_number === selectedNumberToPurchase)
+      const response = await post('/telephony/phone-numbers/purchase', {
+        phone_number: selectedNumberToPurchase,
+        capabilities: selectedNumber?.capabilities || { voice: true, sms: true }
+      })
+      if (response.error) {
+        alert(`Error: ${response.error}`)
+        return
+      }
+      alert('Phone number purchased successfully! Now link it to an agent.')
+      setPurchaseStep('link')
+      setPurchasedNumberId(response.data?.phone_number?.id || null)
+      setAddPhoneForm({
+        ...addPhoneForm,
+        phone_number: selectedNumberToPurchase,
+        provider_sid: response.data?.twilio_sid || ''
+      })
+      // Refresh phone numbers list
+      await fetchPhoneNumbers()
+      // Refresh data to update counts
+      await fetchData()
+    } catch (error: any) {
+      alert(`Error purchasing number: ${error.message}`)
+    } finally {
+      setPurchasingNumber(false)
+    }
+  }
+
   const handleAddPhoneNumber = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       const response = await post('/telephony/phone-numbers', {
-        ...addPhoneForm,
+        phone_number: addPhoneForm.phone_number,
+        provider: addPhoneForm.provider,
+        provider_sid: addPhoneForm.provider_sid,
+        capabilities: addPhoneForm.capabilities,
         monthly_cost: addPhoneForm.monthly_cost ? parseFloat(addPhoneForm.monthly_cost) : null
       })
       if (response.error) {
         alert(`Error: ${response.error}`)
         return
       }
-      alert('Phone number added successfully!')
+      
+      const phoneNumberId = response.data?.phone_number?.id
+      
+      // Link to agent if selected
+      if (addPhoneForm.agent_id && phoneNumberId) {
+        try {
+          const linkResponse = await put(`/agents/${addPhoneForm.agent_id}`, {
+            phone_number_id: phoneNumberId
+          })
+          if (linkResponse.error) {
+            console.warn('Phone number added but failed to link to agent:', linkResponse.error)
+            alert('Phone number added successfully! You can link it to an agent later in Agent settings.')
+          } else {
+            alert('Phone number added and linked to agent successfully!')
+          }
+        } catch (linkError: any) {
+          console.warn('Phone number added but failed to link to agent:', linkError)
+          alert('Phone number added successfully! You can link it to an agent later in Agent settings.')
+        }
+      } else {
+        alert('Phone number added successfully!')
+      }
+      
       setShowAddPhoneModal(false)
-      setAddPhoneForm({
-        phone_number: '',
-        provider: 'twilio',
-        provider_sid: '',
-        capabilities: { voice: true, sms: true, mms: false },
-        monthly_cost: ''
-      })
-      fetchPhoneNumbers()
-      fetchData()
+      resetModal()
+      // Refresh phone numbers list
+      await fetchPhoneNumbers()
+      // Refresh data to update counts
+      await fetchData()
+      // Switch to numbers tab to see the new number
+      if (activeTab !== 'numbers') {
+        setActiveTab('numbers')
+      }
     } catch (error: any) {
       alert(`Error adding phone number: ${error.message}`)
     }
+  }
+
+  const resetModal = () => {
+    setPhoneNumberMode('purchase')
+    setPurchaseStep('search')
+    setAreaCode('')
+    setAvailableNumbers([])
+    setSelectedNumberToPurchase('')
+    setPurchasedNumberId(null)
+    setAddPhoneForm({
+      phone_number: '',
+      provider: 'twilio',
+      provider_sid: '',
+      capabilities: { voice: true, sms: true, mms: false },
+      monthly_cost: '',
+      agent_id: ''
+    })
   }
 
   const formatDuration = (seconds: number) => {
@@ -719,128 +845,337 @@ export default function TelephonyPage() {
         {/* Add Phone Number Modal */}
         {showAddPhoneModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-xl border border-white/20 p-6 max-w-md w-full">
+            <div className="bg-slate-800 rounded-xl border border-white/20 p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white">Add Phone Number</h2>
                 <button
-                  onClick={() => setShowAddPhoneModal(false)}
+                  onClick={() => {
+                    setShowAddPhoneModal(false)
+                    resetModal()
+                  }}
                   className="text-slate-400 hover:text-white transition-colors"
                 >
                   ✕
                 </button>
               </div>
 
-              <form onSubmit={handleAddPhoneNumber} className="space-y-4">
-                <div>
-                  <label className="block text-slate-300 mb-2">Phone Number *</label>
-                  <input
-                    type="tel"
-                    value={addPhoneForm.phone_number}
-                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, phone_number: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                    placeholder="+1234567890"
-                    required
-                  />
-                  <p className="text-slate-400 text-xs mt-1">Enter in E.164 format (e.g., +1234567890)</p>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-2">Provider *</label>
-                  <select
-                    value={addPhoneForm.provider}
-                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                    required
-                  >
-                    <option value="twilio">Twilio</option>
-                    <option value="vonage">Vonage</option>
-                    <option value="bandwidth">Bandwidth</option>
-                    <option value="plivo">Plivo</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-2">Provider SID (Optional)</label>
-                  <input
-                    type="text"
-                    value={addPhoneForm.provider_sid}
-                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider_sid: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                    placeholder="PN..."
-                  />
-                  <p className="text-slate-400 text-xs mt-1">The phone number SID from your provider</p>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 mb-2">Capabilities</label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={addPhoneForm.capabilities.voice}
-                        onChange={(e) => setAddPhoneForm({
-                          ...addPhoneForm,
-                          capabilities: { ...addPhoneForm.capabilities, voice: e.target.checked }
-                        })}
-                        className="rounded bg-slate-700 border-white/20"
-                      />
-                      Voice
-                    </label>
-                    <label className="flex items-center gap-2 text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={addPhoneForm.capabilities.sms}
-                        onChange={(e) => setAddPhoneForm({
-                          ...addPhoneForm,
-                          capabilities: { ...addPhoneForm.capabilities, sms: e.target.checked }
-                        })}
-                        className="rounded bg-slate-700 border-white/20"
-                      />
-                      SMS
-                    </label>
-                    <label className="flex items-center gap-2 text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={addPhoneForm.capabilities.mms}
-                        onChange={(e) => setAddPhoneForm({
-                          ...addPhoneForm,
-                          capabilities: { ...addPhoneForm.capabilities, mms: e.target.checked }
-                        })}
-                        className="rounded bg-slate-700 border-white/20"
-                      />
-                      MMS
-                    </label>
+              {/* Mode Selection */}
+              {purchaseStep === 'search' && (
+                <div className="mb-6">
+                  <label className="block text-slate-300 mb-3 font-semibold">Choose Option:</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setPhoneNumberMode('purchase')}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        phoneNumberMode === 'purchase'
+                          ? 'border-teal-500 bg-teal-500/10 text-teal-400'
+                          : 'border-white/20 bg-slate-700/50 text-slate-300 hover:border-white/40'
+                      }`}
+                    >
+                      <div className="font-semibold mb-1">Purchase New Number</div>
+                      <div className="text-xs">Buy a new number from Twilio</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPhoneNumberMode('byon')}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        phoneNumberMode === 'byon'
+                          ? 'border-teal-500 bg-teal-500/10 text-teal-400'
+                          : 'border-white/20 bg-slate-700/50 text-slate-300 hover:border-white/40'
+                      }`}
+                    >
+                      <div className="font-semibold mb-1">Bring Your Own Number</div>
+                      <div className="text-xs">Link an existing number you own</div>
+                    </button>
                   </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-slate-300 mb-2">Monthly Cost ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={addPhoneForm.monthly_cost}
-                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, monthly_cost: e.target.value })}
-                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                    placeholder="1.00"
-                  />
-                </div>
+              {/* Purchase Flow */}
+              {phoneNumberMode === 'purchase' && (
+                <>
+                  {/* Step 1: Search by Area Code */}
+                  {purchaseStep === 'search' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-slate-300 mb-2">Area Code *</label>
+                        <input
+                          type="text"
+                          value={areaCode}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 3)
+                            setAreaCode(value)
+                          }}
+                          className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white text-2xl text-center"
+                          placeholder="415"
+                          maxLength={3}
+                          required
+                        />
+                        <p className="text-slate-400 text-xs mt-1">Enter 3-digit area code (e.g., 415, 212, 310)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSearchAvailableNumbers}
+                        disabled={searchingNumbers || areaCode.length !== 3}
+                        className="w-full px-4 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+                      >
+                        {searchingNumbers ? 'Searching...' : 'Search Available Numbers'}
+                      </button>
+                    </div>
+                  )}
 
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddPhoneModal(false)}
-                    className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
-                  >
-                    Add Number
-                  </button>
-                </div>
-              </form>
+                  {/* Step 2: Select Number */}
+                  {purchaseStep === 'select' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-white">Available Numbers for Area Code {areaCode}</h3>
+                          <p className="text-slate-400 text-sm">{availableNumbers.length} numbers found</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPurchaseStep('search')
+                            setSelectedNumberToPurchase('')
+                          }}
+                          className="text-teal-400 hover:text-teal-300 text-sm"
+                        >
+                          ← Change Area Code
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto space-y-2">
+                        {availableNumbers.map((num) => (
+                          <button
+                            key={num.phone_number}
+                            type="button"
+                            onClick={() => setSelectedNumberToPurchase(num.phone_number)}
+                            className={`w-full p-3 rounded-lg border-2 transition-colors text-left ${
+                              selectedNumberToPurchase === num.phone_number
+                                ? 'border-teal-500 bg-teal-500/10'
+                                : 'border-white/20 bg-slate-700/50 hover:border-white/40'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-semibold text-white">{num.phone_number}</div>
+                                <div className="text-xs text-slate-400">
+                                  {num.locality}, {num.region} {num.postal_code}
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                  {num.capabilities.voice && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">Voice</span>
+                                  )}
+                                  {num.capabilities.sms && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-300">SMS</span>
+                                  )}
+                                  {num.capabilities.mms && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">MMS</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-sm text-slate-300">${num.monthly_cost || '1.00'}/mo</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handlePurchaseNumber}
+                        disabled={!selectedNumberToPurchase || purchasingNumber}
+                        className="w-full px-4 py-3 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+                      >
+                        {purchasingNumber ? 'Purchasing...' : `Purchase ${selectedNumberToPurchase || 'Number'}`}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Step 3: Link to Agent */}
+                  {purchaseStep === 'link' && (
+                    <div className="space-y-4">
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-4">
+                        <div className="text-green-400 font-semibold mb-1">✓ Phone Number Purchased!</div>
+                        <div className="text-slate-300 text-sm">{addPhoneForm.phone_number}</div>
+                      </div>
+                      <div>
+                        <label className="block text-slate-300 mb-2">Link to Agent (Optional)</label>
+                        <select
+                          value={addPhoneForm.agent_id}
+                          onChange={(e) => setAddPhoneForm({ ...addPhoneForm, agent_id: e.target.value })}
+                          className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                        >
+                          <option value="">Link later in Agent settings</option>
+                          {agents.map((agent) => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.name} ({agent.type})
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-slate-400 text-xs mt-1">You can also link this number to an agent later in the Agent settings page.</p>
+                      </div>
+                      {addPhoneForm.agent_id && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const response = await put(`/agents/${addPhoneForm.agent_id}`, {
+                                phone_number_id: purchasedNumberId
+                              })
+                              if (response.error) {
+                                alert(`Error: ${response.error}`)
+                                return
+                              }
+                              alert('Phone number linked to agent successfully!')
+                              setShowAddPhoneModal(false)
+                              resetModal()
+                            } catch (error: any) {
+                              alert(`Error linking: ${error.message}`)
+                            }
+                          }}
+                          className="w-full px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
+                        >
+                          Link to Selected Agent
+                        </button>
+                      )}
+                      <div className="flex gap-3 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddPhoneModal(false)
+                            resetModal()
+                          }}
+                          className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Bring Your Own Number Flow */}
+              {phoneNumberMode === 'byon' && (
+                <form onSubmit={handleAddPhoneNumber} className="space-y-4">
+                  <div>
+                    <label className="block text-slate-300 mb-2">Phone Number *</label>
+                    <input
+                      type="tel"
+                      value={addPhoneForm.phone_number}
+                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, phone_number: e.target.value })}
+                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                      placeholder="+1234567890"
+                      required
+                    />
+                    <p className="text-slate-400 text-xs mt-1">Enter your existing phone number in E.164 format (e.g., +1234567890)</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-2">Provider *</label>
+                    <select
+                      value={addPhoneForm.provider}
+                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider: e.target.value })}
+                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                      required
+                    >
+                      <option value="twilio">Twilio</option>
+                      <option value="vonage">Vonage</option>
+                      <option value="bandwidth">Bandwidth</option>
+                      <option value="plivo">Plivo</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-2">Provider SID (Optional)</label>
+                    <input
+                      type="text"
+                      value={addPhoneForm.provider_sid}
+                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider_sid: e.target.value })}
+                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                      placeholder="PN..."
+                    />
+                    <p className="text-slate-400 text-xs mt-1">The phone number SID from your provider (if available)</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-2">Capabilities</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={addPhoneForm.capabilities.voice}
+                          onChange={(e) => setAddPhoneForm({
+                            ...addPhoneForm,
+                            capabilities: { ...addPhoneForm.capabilities, voice: e.target.checked }
+                          })}
+                          className="rounded bg-slate-700 border-white/20"
+                        />
+                        Voice
+                      </label>
+                      <label className="flex items-center gap-2 text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={addPhoneForm.capabilities.sms}
+                          onChange={(e) => setAddPhoneForm({
+                            ...addPhoneForm,
+                            capabilities: { ...addPhoneForm.capabilities, sms: e.target.checked }
+                          })}
+                          className="rounded bg-slate-700 border-white/20"
+                        />
+                        SMS
+                      </label>
+                      <label className="flex items-center gap-2 text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={addPhoneForm.capabilities.mms}
+                          onChange={(e) => setAddPhoneForm({
+                            ...addPhoneForm,
+                            capabilities: { ...addPhoneForm.capabilities, mms: e.target.checked }
+                          })}
+                          className="rounded bg-slate-700 border-white/20"
+                        />
+                        MMS
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-2">Link to Agent (Optional)</label>
+                    <select
+                      value={addPhoneForm.agent_id}
+                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, agent_id: e.target.value })}
+                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                    >
+                      <option value="">Link later in Agent settings</option>
+                      {agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.type})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-slate-400 text-xs mt-1">You can also link this number to an agent later in the Agent settings page.</p>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddPhoneModal(false)
+                        resetModal()
+                      }}
+                      className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
+                    >
+                      Add Number
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}

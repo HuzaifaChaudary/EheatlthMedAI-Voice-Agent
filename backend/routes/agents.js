@@ -54,7 +54,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(
-      'SELECT id, name, type, description, is_active, configuration, created_at FROM ai_agents WHERE id = $1',
+      'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at FROM ai_agents WHERE id = $1',
       [id]
     );
 
