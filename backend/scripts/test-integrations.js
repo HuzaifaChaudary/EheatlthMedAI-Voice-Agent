@@ -1,215 +1,210 @@
-#!/usr/bin/env node
 /**
- * Integration Services Test Script
- * Tests all scheduling, billing, and CRM integration endpoints
- * 
- * Usage:
- *   node scripts/test-integrations.js
- *   
- * Or with custom credentials:
- *   EMAIL=your@email.com PASSWORD=yourpass node scripts/test-integrations.js
+ * Test Calendar and EHR/CRM Integration Status
+ * Checks if integrations are configured and active
  */
 
-const API_URL = process.env.API_URL || 'http://localhost:5000';
-const EMAIL = process.env.EMAIL || 'chhuzaifaiftikhar@gmail.com';
-const PASSWORD = process.env.PASSWORD || 'Mypassword123_';
+const db = require('../config/database');
 
-let TOKEN = null;
-
-async function login() {
-  console.log('\n📝 Logging in...');
-  const response = await fetch(`${API_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD })
-  });
-  
-  const data = await response.json();
-  if (!data.token) {
-    throw new Error(`Login failed: ${data.message}`);
-  }
-  
-  TOKEN = data.token;
-  console.log(`✅ Logged in as ${data.user.email} (${data.user.role})`);
-  return data;
-}
-
-async function apiCall(method, endpoint, body = null) {
-  const options = {
-    method,
-    headers: {
-      'Authorization': `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  };
-  
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-  
-  const response = await fetch(`${API_URL}${endpoint}`, options);
-  return response.json();
-}
-
-async function testIntegrationStatus() {
-  console.log('\n📊 Testing Integration Status...');
-  const result = await apiCall('GET', '/api/integrations/test/status');
-  console.log(`   Active integrations: ${result.active_integrations}`);
-  console.log(`   Available providers:`);
-  console.log(`     Scheduling: ${result.available_providers.scheduling.join(', ')}`);
-  console.log(`     Billing: ${result.available_providers.billing.join(', ')}`);
-  console.log(`     CRM: ${result.available_providers.crm.join(', ')}`);
-  return result;
-}
-
-async function testCredentialsFormat() {
-  console.log('\n📋 Testing Credentials Format Endpoint...');
-  const result = await apiCall('GET', '/api/integrations/test/credentials-format');
-  console.log('   ✅ Credentials format endpoint working');
-  return result;
-}
-
-async function createTestIntegrations() {
-  console.log('\n🔧 Creating Test Integrations...');
-  
-  // Create CRM integration
-  const crm = await apiCall('POST', '/api/integrations/test/create-integration', {
-    type: 'crm',
-    provider: 'zendesk',
-    name: 'Test Zendesk',
-    credentials: {
-      subdomain: 'test',
-      email: 'test@example.com',
-      api_token: 'test_token'
-    }
-  });
-  console.log(`   ✅ Created CRM integration: ${crm.integration?.name || 'Error'}`);
-  
-  // Create Scheduling integration
-  const scheduling = await apiCall('POST', '/api/integrations/test/create-integration', {
-    type: 'scheduling',
-    provider: 'calendly',
-    name: 'Test Calendly',
-    credentials: {
-      api_key: 'test_api_key',
-      user_uri: 'https://calendly.com/test'
-    }
-  });
-  console.log(`   ✅ Created Scheduling integration: ${scheduling.integration?.name || 'Error'}`);
-  
-  // Create Billing integration
-  const billing = await apiCall('POST', '/api/integrations/test/create-integration', {
-    type: 'billing',
-    provider: 'athenahealth',
-    name: 'Test AthenaHealth',
-    credentials: {
-      api_key: 'test_api_key',
-      api_secret: 'test_secret',
-      practice_id: '12345'
-    }
-  });
-  console.log(`   ✅ Created Billing integration: ${billing.integration?.name || 'Error'}`);
-  
-  return { crm, scheduling, billing };
-}
-
-async function testCRMEndpoints() {
-  console.log('\n🎫 Testing CRM Endpoints...');
-  
-  // Test connection
-  const connection = await apiCall('POST', '/api/integrations/test/crm/connection', {
-    provider: 'zendesk',
-    credentials: {
-      subdomain: 'test',
-      email: 'test@example.com',
-      api_token: 'test_token'
-    }
-  });
-  console.log(`   Connection test: ${connection.success ? '✅' : '⚠️'} ${connection.message}`);
-  
-  // Test ticket creation format
-  const ticketExample = await apiCall('POST', '/api/integrations/test/crm/create-ticket', {});
-  console.log(`   Ticket creation endpoint: ✅ Returns proper error format`);
-  
-  return { connection, ticketExample };
-}
-
-async function testBillingEndpoints() {
-  console.log('\n💰 Testing Billing Endpoints...');
-  
-  // Test connection
-  const connection = await apiCall('POST', '/api/integrations/test/billing/connection', {
-    provider: 'drchrono',
-    credentials: {
-      access_token: 'test_token'
-    }
-  });
-  console.log(`   Connection test: ${connection.success ? '✅' : '⚠️'} ${connection.message}`);
-  
-  // Test charge creation format
-  const chargeExample = await apiCall('POST', '/api/integrations/test/billing/create-charge', {});
-  console.log(`   Charge creation endpoint: ✅ Returns proper error format`);
-  
-  return { connection, chargeExample };
-}
-
-async function testSchedulingEndpoints() {
-  console.log('\n📅 Testing Scheduling Endpoints...');
-  
-  // Test Google Calendar connection
-  const gcalConnection = await apiCall('POST', '/api/integrations/test/scheduling/google-calendar', {
-    access_token: 'test_token'
-  });
-  console.log(`   Google Calendar: ${gcalConnection.success ? '✅' : '⚠️'} ${gcalConnection.message || gcalConnection.error}`);
-  
-  // Test sync appointment format
-  const syncExample = await apiCall('POST', '/api/integrations/test/scheduling/sync-appointment', {});
-  console.log(`   Sync appointment endpoint: ✅ Returns proper error format`);
-  
-  return { gcalConnection, syncExample };
-}
-
-async function listIntegrations() {
-  console.log('\n📋 Listing All Integrations...');
-  const result = await apiCall('GET', '/api/integrations/test/list');
-  
-  if (result.integrations && result.integrations.length > 0) {
-    result.integrations.forEach(int => {
-      console.log(`   - ${int.name} (${int.provider}) [${int.type}] ${int.is_active ? '✅' : '❌'}`);
-    });
-  } else {
-    console.log('   No integrations found');
-  }
-  
-  return result;
-}
-
-async function runTests() {
-  console.log('═'.repeat(60));
-  console.log('🧪 EHealth Med AI - Integration Services Test Suite');
-  console.log('═'.repeat(60));
-  
+async function testIntegrations() {
   try {
-    await login();
-    await testIntegrationStatus();
-    await testCredentialsFormat();
-    await createTestIntegrations();
-    await testCRMEndpoints();
-    await testBillingEndpoints();
-    await testSchedulingEndpoints();
-    await listIntegrations();
+    console.log('🔍 Testing Calendar and EHR/CRM Integration Status...\n');
+
+    // 1. Check Calendar Integrations (Google Calendar, GoHighLevel, etc.)
+    console.log('📅 CALENDAR INTEGRATIONS:');
+    console.log('─'.repeat(50));
     
-    console.log('\n' + '═'.repeat(60));
-    console.log('✅ All integration endpoints are working correctly!');
-    console.log('═'.repeat(60));
-    console.log('\nNote: Connection tests return errors because we\'re using test credentials.');
-    console.log('With real API credentials, the integrations will work fully.\n');
+    const calendarIntegrations = await db.query(
+      `SELECT id, name, type, provider, is_active, last_sync_at, created_at, organization_id
+       FROM integrations 
+       WHERE type = 'scheduling' OR provider IN ('google_calendar', 'gohighlevel', 'calendly', 'zocdoc')
+       ORDER BY created_at DESC`
+    );
+
+    if (calendarIntegrations.rows.length === 0) {
+      console.log('❌ No calendar integrations found');
+      console.log('   → Users need to configure calendar integrations in Settings → Integrations');
+    } else {
+      calendarIntegrations.rows.forEach(integration => {
+        const status = integration.is_active ? '✅ ACTIVE' : '❌ INACTIVE';
+        const lastSync = integration.last_sync_at 
+          ? new Date(integration.last_sync_at).toLocaleString() 
+          : 'Never';
+        console.log(`   ${status} - ${integration.name} (${integration.provider})`);
+        console.log(`      Organization ID: ${integration.organization_id || 'NULL'}`);
+        console.log(`      Last Sync: ${lastSync}`);
+        console.log(`      Created: ${new Date(integration.created_at).toLocaleString()}`);
+        console.log('');
+      });
+    }
+
+    // 2. Check EHR Systems
+    console.log('\n🏥 EHR SYSTEMS:');
+    console.log('─'.repeat(50));
+    
+    const ehrSystems = await db.query(
+      `SELECT e.*, 
+              CASE 
+                WHEN e.connector_type = 'hl7' THEN h.name
+                WHEN e.connector_type = 'fhir' THEN f.name
+              END as connector_name
+       FROM ehr_systems e
+       LEFT JOIN hl7_connectors h ON e.connector_id = h.id AND e.connector_type = 'hl7'
+       LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
+       ORDER BY e.created_at DESC`
+    );
+
+    if (ehrSystems.rows.length === 0) {
+      console.log('❌ No EHR systems configured');
+      console.log('   → Users need to configure EHR systems in Architecture → EHR');
+    } else {
+      ehrSystems.rows.forEach(system => {
+        const status = system.is_active ? '✅ ACTIVE' : '❌ INACTIVE';
+        const connectorStatus = system.connector_id && system.connector_type 
+          ? `✅ Linked to ${system.connector_type.toUpperCase()} connector: ${system.connector_name || 'Unknown'}`
+          : '❌ No connector linked';
+        const syncStatus = system.sync_enabled ? '✅ Sync Enabled' : '❌ Sync Disabled';
+        
+        console.log(`   ${status} - ${system.name} (${system.vendor})`);
+        console.log(`      Organization ID: ${system.organization_id || 'NULL'}`);
+        console.log(`      ${connectorStatus}`);
+        console.log(`      ${syncStatus} (${system.sync_frequency || 'N/A'})`);
+        console.log(`      Connection Type: ${system.connection_type || system.ehr_type || 'N/A'}`);
+        console.log('');
+      });
+    }
+
+    // 3. Check HL7 Connectors
+    console.log('\n📡 HL7 CONNECTORS:');
+    console.log('─'.repeat(50));
+    
+    const hl7Connectors = await db.query(
+      'SELECT id, name, hl7_version, endpoint_url, is_active, organization_id, created_at FROM hl7_connectors ORDER BY created_at DESC'
+    );
+
+    if (hl7Connectors.rows.length === 0) {
+      console.log('❌ No HL7 connectors configured');
+      console.log('   → Users need to configure HL7 connectors in Architecture → HL7');
+    } else {
+      hl7Connectors.rows.forEach(connector => {
+        const status = connector.is_active ? '✅ ACTIVE' : '❌ INACTIVE';
+        console.log(`   ${status} - ${connector.name}`);
+        console.log(`      Organization ID: ${connector.organization_id || 'NULL'}`);
+        console.log(`      HL7 Version: ${connector.hl7_version || 'N/A'}`);
+        console.log(`      Endpoint: ${connector.endpoint_url || 'N/A'}`);
+        console.log('');
+      });
+    }
+
+    // 4. Check FHIR Connectors
+    console.log('\n🔗 FHIR CONNECTORS:');
+    console.log('─'.repeat(50));
+    
+    const fhirConnectors = await db.query(
+      'SELECT id, name, fhir_version, base_url, is_active, organization_id, created_at FROM fhir_connectors ORDER BY created_at DESC'
+    );
+
+    if (fhirConnectors.rows.length === 0) {
+      console.log('❌ No FHIR connectors configured');
+      console.log('   → Users need to configure FHIR connectors in Architecture → FHIR');
+    } else {
+      fhirConnectors.rows.forEach(connector => {
+        const status = connector.is_active ? '✅ ACTIVE' : '❌ INACTIVE';
+        console.log(`   ${status} - ${connector.name}`);
+        console.log(`      Organization ID: ${connector.organization_id || 'NULL'}`);
+        console.log(`      FHIR Version: ${connector.fhir_version || 'N/A'}`);
+        console.log(`      Base URL: ${connector.base_url || 'N/A'}`);
+        console.log('');
+      });
+}
+
+    // 5. Check CRM Integrations
+    console.log('\n💼 CRM INTEGRATIONS:');
+    console.log('─'.repeat(50));
+    
+    const crmIntegrations = await db.query(
+      `SELECT id, name, type, provider, is_active, last_sync_at, created_at, organization_id
+       FROM integrations 
+       WHERE type = 'crm' OR provider IN ('salesforce', 'hubspot', 'zendesk', 'freshdesk')
+       ORDER BY created_at DESC`
+    );
+
+    if (crmIntegrations.rows.length === 0) {
+      console.log('❌ No CRM integrations found');
+      console.log('   → Users need to configure CRM integrations in Settings → Integrations');
+    } else {
+      crmIntegrations.rows.forEach(integration => {
+        const status = integration.is_active ? '✅ ACTIVE' : '❌ INACTIVE';
+        const lastSync = integration.last_sync_at 
+          ? new Date(integration.last_sync_at).toLocaleString() 
+          : 'Never';
+        console.log(`   ${status} - ${integration.name} (${integration.provider})`);
+        console.log(`      Organization ID: ${integration.organization_id || 'NULL'}`);
+        console.log(`      Last Sync: ${lastSync}`);
+        console.log('');
+      });
+    }
+
+    // 6. Summary
+    console.log('\n📊 SUMMARY:');
+    console.log('─'.repeat(50));
+    console.log(`   Calendar Integrations: ${calendarIntegrations.rows.length} (${calendarIntegrations.rows.filter(i => i.is_active).length} active)`);
+    console.log(`   EHR Systems: ${ehrSystems.rows.length} (${ehrSystems.rows.filter(s => s.is_active).length} active)`);
+    console.log(`   HL7 Connectors: ${hl7Connectors.rows.length} (${hl7Connectors.rows.filter(c => c.is_active).length} active)`);
+    console.log(`   FHIR Connectors: ${fhirConnectors.rows.length} (${fhirConnectors.rows.filter(c => c.is_active).length} active)`);
+    console.log(`   CRM Integrations: ${crmIntegrations.rows.length} (${crmIntegrations.rows.filter(i => i.is_active).length} active)`);
+
+    // 7. Check if integrations are properly linked
+    console.log('\n🔗 LINKAGE STATUS:');
+    console.log('─'.repeat(50));
+    
+    const unlinkedEHR = ehrSystems.rows.filter(s => !s.connector_id || !s.connector_type);
+    if (unlinkedEHR.length > 0) {
+      console.log(`   ⚠️  ${unlinkedEHR.length} EHR system(s) without connectors:`);
+      unlinkedEHR.forEach(system => {
+        console.log(`      - ${system.name} (ID: ${system.id})`);
+    });
+      console.log('   → These systems need to be linked to HL7 or FHIR connectors to work');
+    } else if (ehrSystems.rows.length > 0) {
+      console.log('   ✅ All EHR systems are properly linked to connectors');
+    }
+
+    // 8. Check organization isolation
+    console.log('\n🏢 ORGANIZATION ISOLATION:');
+    console.log('─'.repeat(50));
+    
+    const orgsWithIntegrations = await db.query(
+      `SELECT DISTINCT organization_id, COUNT(*) as integration_count
+       FROM (
+         SELECT organization_id FROM integrations
+         UNION ALL
+         SELECT organization_id FROM ehr_systems
+         UNION ALL
+         SELECT organization_id FROM hl7_connectors
+         UNION ALL
+         SELECT organization_id FROM fhir_connectors
+       ) AS all_integrations
+       WHERE organization_id IS NOT NULL
+       GROUP BY organization_id`
+    );
+
+    if (orgsWithIntegrations.rows.length === 0) {
+      console.log('   ⚠️  All integrations are at organization_id = NULL (not isolated)');
+    } else {
+      console.log(`   ✅ Integrations found for ${orgsWithIntegrations.rows.length} organization(s):`);
+      orgsWithIntegrations.rows.forEach(org => {
+        console.log(`      - Organization ID ${org.organization_id}: ${org.integration_count} integration(s)`);
+      });
+    }
+
+    console.log('\n✅ Integration check complete!\n');
     
   } catch (error) {
-    console.error('\n❌ Test failed:', error.message);
+    console.error('❌ Error testing integrations:', error);
     process.exit(1);
+  } finally {
+    await db.end();
   }
 }
 
-runTests();
-
+// Run the test
+testIntegrations();

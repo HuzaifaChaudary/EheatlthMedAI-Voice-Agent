@@ -60,6 +60,73 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
+// Update integration
+router.put('/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    const { name, credentials, config, is_active } = req.body;
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (credentials !== undefined) {
+      updates.push(`credentials = $${paramCount++}`);
+      values.push(JSON.stringify(credentials));
+    }
+    if (config !== undefined) {
+      updates.push(`config = $${paramCount++}`);
+      values.push(JSON.stringify(config));
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(is_active);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    let query;
+    if (orgId) {
+      values.push(orgId);
+      query = `UPDATE integrations SET ${updates.join(', ')} WHERE id = $${paramCount} AND organization_id = $${paramCount + 1} RETURNING id, name, type, provider, is_active, created_at`;
+    } else {
+      query = `UPDATE integrations SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING id, name, type, provider, is_active, created_at`;
+    }
+
+    const result = await db.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Integration not found' });
+    }
+
+    res.json({ integration: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating integration:', error);
+    res.status(500).json({ message: 'Error updating integration', error: error.message });
+  }
+});
+
 // Get webhooks
 router.get('/webhooks', authenticateToken, async (req, res) => {
   try {

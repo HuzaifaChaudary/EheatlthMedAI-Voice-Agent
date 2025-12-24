@@ -195,7 +195,13 @@ export default function DashboardPage() {
 
   const fetchAgents = async () => {
     try {
+      console.log('🔄 Fetching agents from /agents...')
       const response = await get('/agents')
+      console.log('📦 API Response received:', { 
+        hasData: !!response.data, 
+        hasError: !!response.error,
+        ok: response.ok
+      })
 
       if (response.error) {
         console.error('❌ Error fetching agents:', response.error)
@@ -205,24 +211,33 @@ export default function DashboardPage() {
           console.warn('⚠️ Auth error fetching agents, but user is authenticated')
         }
         setAgents([])
-      } else if (response.data?.agents) {
-        setAgents(response.data.agents)
-        // Update stats based on fetched agents
-        setStats(prev => ({
-          ...prev,
-          totalAgents: response.data.agents.length,
-          activeAgents: response.data.agents.filter((a: Agent) => a.is_active).length
-        }))
+      } else if (response.data) {
+        // API wrapper returns { ok: true, data: { agents: [...] } }
+        const data = response.data as any
+        const agentsList = data.agents || (Array.isArray(data) ? data : [])
+        
+        if (Array.isArray(agentsList)) {
+          console.log('✅ Parsed agents:', agentsList.length)
+          setAgents(agentsList)
+          // Update stats based on fetched agents
+          setStats(prev => ({
+            ...prev,
+            totalAgents: agentsList.length,
+            activeAgents: agentsList.filter((a: Agent) => a.is_active).length
+          }))
+        } else {
+          console.warn('⚠️ agentsList is not an array:', typeof agentsList, agentsList)
+          setAgents([])
+        }
       } else {
+        console.warn('⚠️ No data in response:', response)
         setAgents([])
       }
     } catch (error) {
       console.error('❌ Error fetching agents:', error)
       setAgents([])
-    } finally {
-      // Always stop loading
-      setLoading(false)
     }
+    // Note: Don't set loading to false here - it's handled in the Promise.all().finally()
   }
 
   // Safety timeout - ensure loading state doesn't last forever

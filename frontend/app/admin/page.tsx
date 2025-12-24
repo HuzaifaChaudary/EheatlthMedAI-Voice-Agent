@@ -25,6 +25,33 @@ interface Stats {
   appointments: number
 }
 
+interface Organization {
+  id: number
+  name: string
+  subdomain: string
+  domain: string
+  subscription_tier: string
+  is_active: boolean
+  user_count: number
+  agent_count: number
+  phone_number_count: number
+  created_at: string
+}
+
+interface OrganizationDetails {
+  organization: Organization
+  resources: {
+    users: any[]
+    agents: any[]
+    phone_numbers: any[]
+    stats: {
+      total_calls: number
+      unique_callers: number
+      total_duration: number
+    }
+  }
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
@@ -35,6 +62,23 @@ export default function AdminDashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createLoading, setCreateLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'users' | 'organizations'>('users')
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [selectedOrg, setSelectedOrg] = useState<OrganizationDetails | null>(null)
+  const [loadingOrgs, setLoadingOrgs] = useState(false)
+  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
+  const [createOrgLoading, setCreateOrgLoading] = useState(false)
+  const [createOrgError, setCreateOrgError] = useState('')
+  const [orgFormData, setOrgFormData] = useState({
+    name: '',
+    subdomain: '',
+    domain: '',
+    subscription_tier: 'professional',
+    max_agents: 10,
+    max_users: 20,
+    max_calls_per_month: 5000,
+    user_email: ''
+  })
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -52,7 +96,14 @@ export default function AdminDashboardPage() {
     fetchUser()
     fetchStats()
     fetchUsers()
+    fetchOrganizations()
   }, [router])
+
+  useEffect(() => {
+    if (activeTab === 'organizations') {
+      fetchOrganizations()
+    }
+  }, [activeTab])
 
   const fetchUser = async () => {
     try {
@@ -93,6 +144,79 @@ export default function AdminDashboardPage() {
       console.error('Error fetching users:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchOrganizations = async () => {
+    try {
+      setLoadingOrgs(true)
+      const response = await get('/organizations/all')
+      if (response.data?.organizations) {
+        setOrganizations(response.data.organizations)
+      }
+    } catch (error) {
+      console.error('Error fetching organizations:', error)
+    } finally {
+      setLoadingOrgs(false)
+    }
+  }
+
+  const fetchOrganizationDetails = async (orgId: number) => {
+    try {
+      setLoadingOrgs(true)
+      const response = await get(`/organizations/${orgId}/details`)
+      if (response.data) {
+        setSelectedOrg(response.data)
+      }
+    } catch (error) {
+      console.error('Error fetching organization details:', error)
+    } finally {
+      setLoadingOrgs(false)
+    }
+  }
+
+  const handleCreateOrganization = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateOrgError('')
+    
+    if (!orgFormData.name) {
+      setCreateOrgError('Organization name is required')
+      return
+    }
+
+    setCreateOrgLoading(true)
+    try {
+      const response = await post('/organizations', {
+        name: orgFormData.name,
+        subdomain: orgFormData.subdomain || null,
+        domain: orgFormData.domain || null,
+        subscription_tier: orgFormData.subscription_tier,
+        max_agents: parseInt(orgFormData.max_agents.toString()),
+        max_users: parseInt(orgFormData.max_users.toString()),
+        max_calls_per_month: parseInt(orgFormData.max_calls_per_month.toString()),
+        user_email: orgFormData.user_email || null
+      })
+
+      if (response.error) {
+        setCreateOrgError(response.error)
+      } else {
+        setShowCreateOrgModal(false)
+        setOrgFormData({
+          name: '',
+          subdomain: '',
+          domain: '',
+          subscription_tier: 'professional',
+          max_agents: 10,
+          max_users: 20,
+          max_calls_per_month: 5000,
+          user_email: ''
+        })
+        fetchOrganizations()
+      }
+    } catch (error: any) {
+      setCreateOrgError(error.message || 'Failed to create organization')
+    } finally {
+      setCreateOrgLoading(false)
     }
   }
 
@@ -221,6 +345,30 @@ export default function AdminDashboardPage() {
       <main className="container mx-auto px-6 py-12">
         <h1 className="text-4xl font-bold text-white mb-8">Admin Dashboard</h1>
 
+        {/* Tabs */}
+        <div className="flex gap-4 mb-6 border-b border-white/20">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-6 py-3 font-semibold transition-colors ${
+              activeTab === 'users'
+                ? 'text-teal-400 border-b-2 border-teal-400'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            User Management
+          </button>
+          <button
+            onClick={() => setActiveTab('organizations')}
+            className={`px-6 py-3 font-semibold transition-colors ${
+              activeTab === 'organizations'
+                ? 'text-teal-400 border-b-2 border-teal-400'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Sub-Accounts (Organizations)
+          </button>
+        </div>
+
         {/* Stats Cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -243,7 +391,216 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
+        {/* Organizations Management */}
+        {activeTab === 'organizations' && (
+          <div className="space-y-6">
+            {selectedOrg ? (
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <button
+                      onClick={() => setSelectedOrg(null)}
+                      className="text-teal-400 hover:text-teal-300 mb-2 flex items-center gap-2"
+                    >
+                      ← Back to Organizations
+                    </button>
+                    <h2 className="text-2xl font-bold text-white">{selectedOrg.organization.name}</h2>
+                    <p className="text-slate-400 text-sm mt-1">
+                      {selectedOrg.organization.domain || selectedOrg.organization.subdomain || 'No domain'}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded text-sm font-semibold ${
+                      selectedOrg.organization.is_active
+                        ? 'bg-green-500 text-white'
+                        : 'bg-red-500 text-white'
+                    }`}
+                  >
+                    {selectedOrg.organization.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+
+                {/* Resources Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                  <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="text-slate-400 text-sm mb-1">Users</div>
+                    <div className="text-2xl font-bold text-white">{selectedOrg.resources.users.length}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="text-slate-400 text-sm mb-1">Agents</div>
+                    <div className="text-2xl font-bold text-white">{selectedOrg.resources.agents.length}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="text-slate-400 text-sm mb-1">Phone Numbers</div>
+                    <div className="text-2xl font-bold text-white">{selectedOrg.resources.phone_numbers.length}</div>
+                  </div>
+                </div>
+
+                {/* Agents List */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-white mb-3">Agents</h3>
+                  <div className="space-y-2">
+                    {selectedOrg.resources.agents.length > 0 ? (
+                      selectedOrg.resources.agents.map((agent: any) => (
+                        <div
+                          key={agent.id}
+                          className="bg-slate-800/50 rounded-lg p-3 flex justify-between items-center"
+                        >
+                          <div>
+                            <div className="text-white font-medium">{agent.name}</div>
+                            <div className="text-slate-400 text-sm">{agent.type}</div>
+                          </div>
+                          <span
+                            className={`px-2 py-1 rounded text-xs ${
+                              agent.is_active ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                            }`}
+                          >
+                            {agent.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 text-sm">No agents configured</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Phone Numbers List */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-white mb-3">Phone Numbers</h3>
+                  <div className="space-y-2">
+                    {selectedOrg.resources.phone_numbers.length > 0 ? (
+                      selectedOrg.resources.phone_numbers.map((pn: any) => (
+                        <div
+                          key={pn.id}
+                          className="bg-slate-800/50 rounded-lg p-3 flex justify-between items-center"
+                        >
+                          <div>
+                            <div className="text-white font-medium">{pn.phone_number}</div>
+                            <div className="text-slate-400 text-sm">{pn.provider || 'N/A'}</div>
+                          </div>
+                          <span
+                            className={`px-2 py-1 rounded text-xs ${
+                              pn.is_active ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                            }`}
+                          >
+                            {pn.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 text-sm">No phone numbers configured</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Users List */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3">Users</h3>
+                  <div className="space-y-2">
+                    {selectedOrg.resources.users.length > 0 ? (
+                      selectedOrg.resources.users.map((u: any) => (
+                        <div
+                          key={u.id}
+                          className="bg-slate-800/50 rounded-lg p-3 flex justify-between items-center"
+                        >
+                          <div>
+                            <div className="text-white font-medium">
+                              {u.first_name} {u.last_name}
+                            </div>
+                            <div className="text-slate-400 text-sm">{u.email}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span
+                              className={`px-2 py-1 rounded text-xs ${
+                                u.role === 'admin' ? 'bg-purple-500' : 'bg-teal-500'
+                              } text-white`}
+                            >
+                              {u.role}
+                            </span>
+                            <span
+                              className={`px-2 py-1 rounded text-xs ${
+                                u.is_active ? 'bg-green-500' : 'bg-red-500'
+                              } text-white`}
+                            >
+                              {u.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 text-sm">No users in this organization</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-white">All Sub-Accounts (Organizations)</h2>
+                  <button
+                    onClick={() => setShowCreateOrgModal(true)}
+                    className="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-6 py-2 rounded-lg transition-colors"
+                  >
+                    + Create New Organization
+                  </button>
+                </div>
+                {loadingOrgs ? (
+                  <div className="text-white">Loading organizations...</div>
+                ) : (
+                  <div className="space-y-4">
+                    {organizations.length > 0 ? (
+                      organizations.map((org) => (
+                        <div
+                          key={org.id}
+                          className="bg-slate-800/50 rounded-lg p-4 hover:bg-slate-800/70 transition-colors cursor-pointer"
+                          onClick={() => fetchOrganizationDetails(org.id)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold text-white mb-1">{org.name}</h3>
+                              <p className="text-slate-400 text-sm mb-3">
+                                {org.domain || org.subdomain || 'No domain configured'}
+                              </p>
+                              <div className="flex gap-4 text-sm">
+                                <span className="text-slate-300">
+                                  <span className="text-slate-400">Users:</span> {org.user_count}
+                                </span>
+                                <span className="text-slate-300">
+                                  <span className="text-slate-400">Agents:</span> {org.agent_count}
+                                </span>
+                                <span className="text-slate-300">
+                                  <span className="text-slate-400">Phone Numbers:</span> {org.phone_number_count}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`px-3 py-1 rounded text-xs font-semibold ${
+                                  org.is_active ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                                }`}
+                              >
+                                {org.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                              <span className="text-slate-400 text-xs">
+                                {org.subscription_tier}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400 text-center py-8">No organizations found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Users Management */}
+        {activeTab === 'users' && (
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">User Management</h2>
@@ -326,6 +683,7 @@ export default function AdminDashboardPage() {
             </table>
           </div>
         </div>
+        )}
       </main>
 
       {/* Create User Modal */}
@@ -447,6 +805,143 @@ export default function AdminDashboardPage() {
                   disabled={createLoading}
                 >
                   {createLoading ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Organization Modal */}
+      {showCreateOrgModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" 
+          onClick={() => {
+            setShowCreateOrgModal(false)
+            setCreateOrgError('')
+          }}
+        >
+          <div 
+            className="bg-slate-900 rounded-xl p-8 max-w-2xl w-full border border-white/20 max-h-[90vh] overflow-y-auto" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold text-white mb-6">Create New Organization (Sub-Account)</h2>
+            
+            {createOrgError && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm">
+                {createOrgError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateOrganization} className="space-y-4">
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Organization Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgFormData.name}
+                  onChange={(e) => setOrgFormData({ ...orgFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Acme Medical Group"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Subdomain</label>
+                  <input
+                    type="text"
+                    value={orgFormData.subdomain}
+                    onChange={(e) => setOrgFormData({ ...orgFormData, subdomain: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="acme"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Domain</label>
+                  <input
+                    type="text"
+                    value={orgFormData.domain}
+                    onChange={(e) => setOrgFormData({ ...orgFormData, domain: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="acme.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Assign User (Optional)</label>
+                <input
+                  type="email"
+                  value={orgFormData.user_email}
+                  onChange={(e) => setOrgFormData({ ...orgFormData, user_email: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="user@example.com (existing user email)"
+                />
+                <p className="text-slate-400 text-xs mt-1">If provided, this user will be assigned to the new organization</p>
+              </div>
+
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Subscription Tier</label>
+                <select
+                  value={orgFormData.subscription_tier}
+                  onChange={(e) => setOrgFormData({ ...orgFormData, subscription_tier: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="starter" className="bg-slate-800">Starter</option>
+                  <option value="professional" className="bg-slate-800">Professional</option>
+                  <option value="enterprise" className="bg-slate-800">Enterprise</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Max Agents</label>
+                  <input
+                    type="number"
+                    value={orgFormData.max_agents}
+                    onChange={(e) => setOrgFormData({ ...orgFormData, max_agents: parseInt(e.target.value) || 10 })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Max Users</label>
+                  <input
+                    type="number"
+                    value={orgFormData.max_users}
+                    onChange={(e) => setOrgFormData({ ...orgFormData, max_users: parseInt(e.target.value) || 20 })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Max Calls/Month</label>
+                  <input
+                    type="number"
+                    value={orgFormData.max_calls_per_month}
+                    onChange={(e) => setOrgFormData({ ...orgFormData, max_calls_per_month: parseInt(e.target.value) || 5000 })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateOrgModal(false)
+                    setCreateOrgError('')
+                  }}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
+                  disabled={createOrgLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={createOrgLoading}
+                >
+                  {createOrgLoading ? 'Creating...' : 'Create Organization'}
                 </button>
               </div>
             </form>

@@ -4,8 +4,27 @@ const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
 // Get all AI agents for user's organization
+// Admin users can optionally filter by organization_id query param
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    const { organization_id } = req.query;
+    
+    // If admin user and organization_id is provided, show that org's agents
+    if (req.user.role === 'admin' && organization_id) {
+      const result = await db.query(
+        `SELECT id, name, type, description, is_active, configuration, 
+                voice_model, voice_settings, system_prompt, temperature, max_tokens,
+                phone_number_id, greeting_message, fallback_message, business_hours,
+                escalation_rules, created_at, organization_id
+         FROM ai_agents 
+         WHERE organization_id = $1
+         ORDER BY type, name`,
+        [organization_id]
+      );
+      return res.json({ agents: result.rows || [] });
+    }
+
+    // Regular users or admin without org filter: show only their organization's agents
     const orgResult = await db.query(
       'SELECT organization_id FROM users WHERE id = $1',
       [req.user.id]
@@ -13,31 +32,22 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const orgId = orgResult.rows[0]?.organization_id;
 
-    let result;
-    if (orgId) {
-      // Query with organization_id
-      result = await db.query(
-        `SELECT id, name, type, description, is_active, configuration, 
-                voice_model, voice_settings, system_prompt, temperature, max_tokens,
-                phone_number_id, greeting_message, fallback_message, business_hours,
-                escalation_rules, created_at
-         FROM ai_agents 
-         WHERE organization_id = $1
-         ORDER BY type, name`,
-        [orgId]
-      );
-    } else {
-      // Fallback: query all agents if organization_id is null
-      // This handles cases where users don't have an organization yet
-      result = await db.query(
-        `SELECT id, name, type, description, is_active, configuration, 
-                voice_model, voice_settings, system_prompt, temperature, max_tokens,
-                phone_number_id, greeting_message, fallback_message, business_hours,
-                escalation_rules, created_at
-         FROM ai_agents 
-         ORDER BY type, name`
-      );
+    if (!orgId) {
+      // User has no organization - return empty array (proper isolation)
+      return res.json({ agents: [] });
     }
+
+    // Query with organization_id (proper isolation)
+    const result = await db.query(
+      `SELECT id, name, type, description, is_active, configuration, 
+              voice_model, voice_settings, system_prompt, temperature, max_tokens,
+              phone_number_id, greeting_message, fallback_message, business_hours,
+              escalation_rules, created_at, organization_id
+       FROM ai_agents 
+       WHERE organization_id = $1
+       ORDER BY type, name`,
+      [orgId]
+    );
 
     res.json({
       agents: result.rows || []
@@ -49,14 +59,33 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Get agent by ID
+// Get agent by ID (with organization isolation)
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query(
-      'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at FROM ai_agents WHERE id = $1',
-      [id]
+    
+    // Get user's organization
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
     );
+    const orgId = orgResult.rows[0]?.organization_id;
+
+    // Admin can access any agent, regular users only their org's agents
+    let result;
+    if (req.user.role === 'admin') {
+      result = await db.query(
+        'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at, organization_id FROM ai_agents WHERE id = $1',
+        [id]
+      );
+    } else if (orgId) {
+      result = await db.query(
+        'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at, organization_id FROM ai_agents WHERE id = $1 AND organization_id = $2',
+        [id, orgId]
+      );
+    } else {
+      return res.status(403).json({ message: 'Access denied. No organization assigned.' });
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Agent not found' });
