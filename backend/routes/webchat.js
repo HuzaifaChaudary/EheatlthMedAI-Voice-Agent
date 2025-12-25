@@ -177,11 +177,18 @@ router.post('/message', async (req, res) => {
     const history = conversation.transcript || [];
 
     // Get AI response (pass history WITHOUT the new message, as processConversation will add it)
+    // Fix: voice_model is for TTS, not AI provider. Use 'openai' or 'anthropic' only.
+    let provider = nluConfig.provider || 'openai';
+    // Validate provider - only 'openai' and 'anthropic' are supported for AI
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'claude') {
+      provider = 'openai'; // Default to OpenAI if invalid provider
+    }
+    
     let aiResponse = await aiService.processConversation({
       agentId: agentId,
       agentConfig: {
-        provider: nluConfig.provider || agent.voice_model || 'openai',
-        model: nluConfig.model || (nluConfig.provider === 'anthropic' ? 'claude-3-opus-20240229' : 'gpt-4'),
+        provider: provider,
+        model: nluConfig.model || (provider === 'anthropic' || provider === 'claude' ? 'claude-3-opus-20240229' : 'gpt-4'),
         system_prompt: nluConfig.system_prompt || agent.system_prompt,
         temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
         max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
@@ -546,8 +553,16 @@ router.post('/message', async (req, res) => {
         aiResponse = await aiService.processConversation({
           agentId: agentId,
           agentConfig: {
-            provider: nluConfig.provider || agent.voice_model || 'openai',
-            model: nluConfig.model || (nluConfig.provider === 'anthropic' ? 'claude-3-opus-20240229' : 'gpt-4'),
+            // Fix: voice_model is for TTS, not AI provider. Use 'openai' or 'anthropic' only.
+            provider: (() => {
+              let p = nluConfig.provider || 'openai';
+              // Validate provider - only 'openai' and 'anthropic' are supported for AI
+              if (p !== 'openai' && p !== 'anthropic' && p !== 'claude') {
+                p = 'openai'; // Default to OpenAI if invalid provider
+              }
+              return p;
+            })(),
+            model: nluConfig.model || (nluConfig.provider === 'anthropic' || nluConfig.provider === 'claude' ? 'claude-3-opus-20240229' : 'gpt-4'),
             system_prompt: nluConfig.system_prompt || agent.system_prompt,
             temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
             max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
