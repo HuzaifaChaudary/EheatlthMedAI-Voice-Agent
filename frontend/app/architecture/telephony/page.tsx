@@ -293,7 +293,7 @@ export default function TelephonyPage() {
           alert('Phone number added successfully! You can link it to an agent later in Agent settings.')
         }
       } else {
-        alert('Phone number added successfully!')
+      alert('Phone number added successfully!')
       }
       
       setShowAddPhoneModal(false)
@@ -318,14 +318,14 @@ export default function TelephonyPage() {
     setAvailableNumbers([])
     setSelectedNumberToPurchase('')
     setPurchasedNumberId(null)
-    setAddPhoneForm({
-      phone_number: '',
-      provider: 'twilio',
-      provider_sid: '',
-      capabilities: { voice: true, sms: true, mms: false },
+      setAddPhoneForm({
+        phone_number: '',
+        provider: 'twilio',
+        provider_sid: '',
+        capabilities: { voice: true, sms: true, mms: false },
       monthly_cost: '',
       agent_id: ''
-    })
+      })
   }
 
   const formatDuration = (seconds: number) => {
@@ -1056,95 +1056,95 @@ export default function TelephonyPage() {
 
               {/* Bring Your Own Number Flow */}
               {phoneNumberMode === 'byon' && (
-                <form onSubmit={handleAddPhoneNumber} className="space-y-4">
-                  <div>
-                    <label className="block text-slate-300 mb-2">Phone Number *</label>
-                    <input
-                      type="tel"
-                      value={addPhoneForm.phone_number}
-                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, phone_number: e.target.value })}
-                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                      placeholder="+1234567890"
-                      required
-                    />
+              <form onSubmit={handleAddPhoneNumber} className="space-y-4">
+                <div>
+                  <label className="block text-slate-300 mb-2">Phone Number *</label>
+                  <input
+                    type="tel"
+                    value={addPhoneForm.phone_number}
+                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, phone_number: e.target.value })}
+                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                    placeholder="+1234567890"
+                    required
+                  />
                     <p className="text-slate-400 text-xs mt-1">Enter your existing phone number in E.164 format (e.g., +1234567890)</p>
-                  </div>
+                </div>
 
-                  <div>
-                    <label className="block text-slate-300 mb-2">Provider *</label>
-                    <select
-                      value={addPhoneForm.provider}
-                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider: e.target.value })}
-                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                      required
-                    >
-                      <option value="twilio">Twilio</option>
-                      <option value="vonage">Vonage</option>
-                      <option value="bandwidth">Bandwidth</option>
-                      <option value="plivo">Plivo</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-slate-300 mb-2">Provider *</label>
+                  <select
+                    value={addPhoneForm.provider}
+                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider: e.target.value })}
+                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                    required
+                  >
+                    <option value="twilio">Twilio</option>
+                    <option value="vonage">Vonage</option>
+                    <option value="bandwidth">Bandwidth</option>
+                    <option value="plivo">Plivo</option>
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="block text-slate-300 mb-2">Provider SID (Optional)</label>
-                    <input
-                      type="text"
-                      value={addPhoneForm.provider_sid}
-                      onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider_sid: e.target.value })}
-                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
-                      placeholder="PN..."
-                    />
+                <div>
+                  <label className="block text-slate-300 mb-2">Provider SID (Optional)</label>
+                  <input
+                    type="text"
+                    value={addPhoneForm.provider_sid}
+                    onChange={(e) => setAddPhoneForm({ ...addPhoneForm, provider_sid: e.target.value })}
+                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                    placeholder="PN..."
+                  />
                     <p className="text-slate-400 text-xs mt-1">The phone number SID from your provider (if available)</p>
-                  </div>
+                </div>
 
-                  <div>
-                    <label className="block text-slate-300 mb-2">Capabilities</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={addPhoneForm.capabilities.voice}
-                          onChange={(e) => setAddPhoneForm({
-                            ...addPhoneForm,
-                            capabilities: { ...addPhoneForm.capabilities, voice: e.target.checked }
-                          })}
-                          className="rounded bg-slate-700 border-white/20"
-                        />
-                        Voice
-                      </label>
-                      <label className="flex items-center gap-2 text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={addPhoneForm.capabilities.sms}
-                          onChange={(e) => setAddPhoneForm({
-                            ...addPhoneForm,
-                            capabilities: { ...addPhoneForm.capabilities, sms: e.target.checked }
-                          })}
-                          className="rounded bg-slate-700 border-white/20"
-                        />
-                        SMS
-                      </label>
-                      <label className="flex items-center gap-2 text-slate-300">
-                        <input
-                          type="checkbox"
-                          checked={addPhoneForm.capabilities.mms}
-                          onChange={(e) => setAddPhoneForm({
-                            ...addPhoneForm,
-                            capabilities: { ...addPhoneForm.capabilities, mms: e.target.checked }
-                          })}
-                          className="rounded bg-slate-700 border-white/20"
-                        />
-                        MMS
-                      </label>
-                    </div>
+                <div>
+                  <label className="block text-slate-300 mb-2">Capabilities</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={addPhoneForm.capabilities.voice}
+                        onChange={(e) => setAddPhoneForm({
+                          ...addPhoneForm,
+                          capabilities: { ...addPhoneForm.capabilities, voice: e.target.checked }
+                        })}
+                        className="rounded bg-slate-700 border-white/20"
+                      />
+                      Voice
+                    </label>
+                    <label className="flex items-center gap-2 text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={addPhoneForm.capabilities.sms}
+                        onChange={(e) => setAddPhoneForm({
+                          ...addPhoneForm,
+                          capabilities: { ...addPhoneForm.capabilities, sms: e.target.checked }
+                        })}
+                        className="rounded bg-slate-700 border-white/20"
+                      />
+                      SMS
+                    </label>
+                    <label className="flex items-center gap-2 text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={addPhoneForm.capabilities.mms}
+                        onChange={(e) => setAddPhoneForm({
+                          ...addPhoneForm,
+                          capabilities: { ...addPhoneForm.capabilities, mms: e.target.checked }
+                        })}
+                        className="rounded bg-slate-700 border-white/20"
+                      />
+                      MMS
+                    </label>
                   </div>
+                </div>
 
-                  <div>
+                <div>
                     <label className="block text-slate-300 mb-2">Link to Agent (Optional)</label>
                     <select
                       value={addPhoneForm.agent_id}
                       onChange={(e) => setAddPhoneForm({ ...addPhoneForm, agent_id: e.target.value })}
-                      className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
+                    className="w-full bg-slate-700/50 border border-white/20 rounded-lg px-4 py-2 text-white"
                     >
                       <option value="">Link later in Agent settings</option>
                       {agents.map((agent) => (
@@ -1154,27 +1154,27 @@ export default function TelephonyPage() {
                       ))}
                     </select>
                     <p className="text-slate-400 text-xs mt-1">You can also link this number to an agent later in the Agent settings page.</p>
-                  </div>
+                </div>
 
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="button"
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
                       onClick={() => {
                         setShowAddPhoneModal(false)
                         resetModal()
                       }}
-                      className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
-                    >
-                      Add Number
-                    </button>
-                  </div>
-                </form>
+                    className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
+                  >
+                    Add Number
+                  </button>
+                </div>
+              </form>
               )}
             </div>
           </div>
