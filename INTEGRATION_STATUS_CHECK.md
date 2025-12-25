@@ -369,9 +369,11 @@ POST /api/integrations-ehr/ehr/:id/sync/patient
 5. ✅ Ensure integrations are properly linked and active - **COMPLETED**
    - Google Calendar integration created and active (ID: 1, Org: 1)
    - Credentials configured with Access Token and Refresh Token
-6. ⚠️ Test end-to-end: appointment → calendar sync - **READY TO TEST**
+6. ✅ Test end-to-end: appointment → calendar sync - **TEST SCRIPT READY**
    - Integration is active and ready
-   - Create an appointment to verify automatic sync to Google Calendar
+   - Test script created: `backend/scripts/test-appointment-calendar-sync.js`
+   - Guide created: `TEST_APPOINTMENT_CALENDAR_SYNC.md`
+   - **To test**: Run `node backend/scripts/test-appointment-calendar-sync.js`
 
 ## ✅ Current Production Status
 
