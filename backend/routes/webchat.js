@@ -433,6 +433,38 @@ router.post('/message', async (req, res) => {
               emergency_call_id: emergencyResult.emergency_call.id
             };
           }
+        } else if (functionName === 'forward_call') {
+          const emergencyForwardingService = require('../services/emergencyForwardingService');
+          const args = typeof aiResponse.functionCall.arguments === 'string' 
+            ? JSON.parse(aiResponse.functionCall.arguments) 
+            : aiResponse.functionCall.arguments;
+          
+          // Get call log ID from conversation
+          const callLogResult = await db.query(
+            'SELECT id FROM call_logs WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [conversation_id]
+          );
+          
+          if (callLogResult.rows.length === 0) {
+            functionResult = {
+              success: false,
+              message: 'Call log not found. This function only works for voice calls.'
+            };
+          } else {
+            const callLogId = callLogResult.rows[0].id;
+            const forwardResult = await emergencyForwardingService.forwardCall(
+              conversation_id,
+              callLogId,
+              args.reason || 'User requested human agent',
+              orgId
+            );
+            
+            functionResult = {
+              success: forwardResult.success,
+              message: forwardResult.message || 'Call forwarded successfully',
+              emergency_contact: forwardResult.emergency_contact
+            };
+          }
         } else if (functionName === 'get_available_providers') {
           const providerScheduleService = require('../services/providerScheduleService');
           const args = typeof aiResponse.functionCall.arguments === 'string' 

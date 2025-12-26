@@ -85,16 +85,33 @@ router.get('/phone-numbers', authenticateToken, async (req, res) => {
     const orgId = orgResult.rows[0]?.organization_id || null;
 
     // Handle both cases: with organization_id and without (null)
+    // Include agent information via LEFT JOIN
     let result;
     if (orgId) {
       result = await db.query(
-        'SELECT * FROM phone_numbers WHERE organization_id = $1 ORDER BY created_at DESC',
+        `SELECT 
+          pn.*,
+          aa.id as agent_id,
+          aa.name as agent_name,
+          aa.type as agent_type
+        FROM phone_numbers pn
+        LEFT JOIN ai_agents aa ON aa.phone_number_id = pn.id
+        WHERE pn.organization_id = $1 
+        ORDER BY pn.created_at DESC`,
         [orgId]
       );
     } else {
       // If user has no organization_id, show all phone numbers with null organization_id
       result = await db.query(
-        'SELECT * FROM phone_numbers WHERE organization_id IS NULL ORDER BY created_at DESC'
+        `SELECT 
+          pn.*,
+          aa.id as agent_id,
+          aa.name as agent_name,
+          aa.type as agent_type
+        FROM phone_numbers pn
+        LEFT JOIN ai_agents aa ON aa.phone_number_id = pn.id
+        WHERE pn.organization_id IS NULL 
+        ORDER BY pn.created_at DESC`
       );
     }
 
@@ -411,12 +428,28 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
     const agent = agentResult.rows[0];
 
     // Create conversation
-    const conversationResult = await db.query(
-      `INSERT INTO conversations (organization_id, agent_id, patient_phone, status)
-       VALUES ($1, $2, $3, 'active')
-       RETURNING *`,
-      [organizationId, agent.id, From]
-    );
+    // Try with organization_id first, fallback if column doesn't exist
+    let conversationResult;
+    try {
+      conversationResult = await db.query(
+        `INSERT INTO conversations (organization_id, agent_id, patient_phone, status)
+         VALUES ($1, $2, $3, 'active')
+         RETURNING *`,
+        [organizationId, agent.id, From]
+      );
+    } catch (error) {
+      // Fallback if organization_id column doesn't exist
+      if (error.message.includes('organization_id')) {
+        conversationResult = await db.query(
+          `INSERT INTO conversations (agent_id, patient_phone, status)
+           VALUES ($1, $2, 'active')
+           RETURNING *`,
+          [agent.id, From]
+        );
+      } else {
+        throw error;
+      }
+    }
 
     const conversation = conversationResult.rows[0];
 
@@ -450,20 +483,52 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
     }
 
     // Generate initial greeting
-    const twiml = await telephonyService.generateVoiceResponse({
-      conversationId: conversation.id,
-      agentId: agent.id,
-      userInput: null
-    });
+    try {
+      const twiml = await telephonyService.generateVoiceResponse({
+        conversationId: conversation.id,
+        agentId: agent.id,
+        userInput: null
+      });
 
-    return res.send(twiml);
+      if (!twiml || typeof twiml !== 'string') {
+        throw new Error('Invalid TwiML response from generateVoiceResponse');
+      }
+
+      return res.type('text/xml').send(twiml);
+    } catch (voiceError) {
+      console.error('Error generating voice response for inbound call:', voiceError);
+      console.error('Agent ID:', agent.id, 'Conversation ID:', conversation.id);
+      
+      // Update call log with error
+      try {
+        await db.query(
+          'UPDATE call_logs SET status = $1 WHERE id = $2',
+          ['failed', callLog.id]
+        );
+      } catch (updateError) {
+        console.error('Error updating call log:', updateError);
+      }
+
+      const twilio = require('twilio');
+      const response = new twilio.twiml.VoiceResponse();
+      response.say({
+        voice: 'alice',
+        language: 'en-US'
+      }, 'I apologize, but an application error has occurred. Please try again later or contact support.');
+      response.hangup();
+      return res.type('text/xml').send(response.toString());
+    }
   } catch (error) {
     console.error('Error handling inbound call:', error);
+    console.error('Error stack:', error.stack);
     const twilio = require('twilio');
     const response = new twilio.twiml.VoiceResponse();
-    response.say('I apologize, but I encountered an error. Please try again later.');
+    response.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, 'I apologize, but an application error has occurred. Please try again later.');
     response.hangup();
-    return res.send(response.toString());
+    return res.type('text/xml').send(response.toString());
   }
 });
 
@@ -487,57 +552,105 @@ router.post('/twilio/voice', express.urlencoded({ extended: true }), async (req,
 
     // Check if this is the initial call (no speech result yet)
     if (!SpeechResult && conversationId) {
-      // Generate initial greeting
-      const twiml = await telephonyService.generateVoiceResponse({
-        conversationId: conversationId,
-        agentId: agentId,
-        userInput: null
-      });
+      try {
+        // Generate initial greeting
+        const twiml = await telephonyService.generateVoiceResponse({
+          conversationId: conversationId,
+          agentId: agentId,
+          userInput: null
+        });
 
-      // Check consent for recording
-      const hasConsent = await telephonyService.checkConsent(From, organizationId, 'recording');
-      
-      if (!hasConsent) {
-        // Request consent
+        if (!twiml || typeof twiml !== 'string') {
+          throw new Error('Invalid TwiML response from generateVoiceResponse');
+        }
+
+        // Check consent for recording
+        const hasConsent = await telephonyService.checkConsent(From, organizationId, 'recording');
+        
+        if (!hasConsent) {
+          // Request consent
+          const twilio = require('twilio');
+          const response = new twilio.twiml.VoiceResponse();
+          response.say({
+            voice: 'alice',
+            language: 'en-US'
+          }, 'This call may be recorded for quality and compliance purposes. Do you consent to recording?');
+          response.gather({
+            input: 'speech',
+            action: `${telephonyService.baseUrl}/api/telephony/twilio/consent?conversationId=${conversationId}&callLogId=${callLogId}&agentId=${agentId}&from=${From}`,
+            method: 'POST',
+            speechTimeout: 'auto'
+          });
+          return res.type('text/xml').send(response.toString());
+        }
+
+        return res.type('text/xml').send(twiml);
+      } catch (voiceError) {
+        console.error('Error generating voice response in /twilio/voice:', voiceError);
+        console.error('Agent ID:', agentId, 'Conversation ID:', conversationId);
+        console.error('Error stack:', voiceError.stack);
+        
         const twilio = require('twilio');
         const response = new twilio.twiml.VoiceResponse();
-        response.say('This call may be recorded for quality and compliance purposes. Do you consent to recording?');
-        response.gather({
-          input: 'speech',
-          action: `${telephonyService.baseUrl}/api/telephony/twilio/consent?conversationId=${conversationId}&callLogId=${callLogId}&agentId=${agentId}&from=${From}`,
-          method: 'POST',
-          speechTimeout: 'auto'
-        });
-        return res.send(response.toString());
+        response.say({
+          voice: 'alice',
+          language: 'en-US'
+        }, 'I apologize, but an application error has occurred. Please try again later.');
+        response.hangup();
+        return res.type('text/xml').send(response.toString());
       }
-
-      return res.send(twiml);
     }
 
     // Process user speech input
     if (SpeechResult && conversationId) {
-      const twiml = await telephonyService.generateVoiceResponse({
-        conversationId: conversationId,
-        agentId: agentId,
-        userInput: SpeechResult
-      });
+      try {
+        const twiml = await telephonyService.generateVoiceResponse({
+          conversationId: conversationId,
+          agentId: agentId,
+          userInput: SpeechResult
+        });
 
-      return res.send(twiml);
+        if (!twiml || typeof twiml !== 'string') {
+          throw new Error('Invalid TwiML response from generateVoiceResponse');
+        }
+
+        return res.type('text/xml').send(twiml);
+      } catch (voiceError) {
+        console.error('Error generating voice response for user input:', voiceError);
+        console.error('Agent ID:', agentId, 'Conversation ID:', conversationId, 'Speech Result:', SpeechResult);
+        console.error('Error stack:', voiceError.stack);
+        
+        const twilio = require('twilio');
+        const response = new twilio.twiml.VoiceResponse();
+        response.say({
+          voice: 'alice',
+          language: 'en-US'
+        }, 'I apologize, but an application error has occurred. Please try again later.');
+        response.hangup();
+        return res.type('text/xml').send(response.toString());
+      }
     }
 
     // Fallback
     const twilio = require('twilio');
     const response = new twilio.twiml.VoiceResponse();
-    response.say('I apologize, but I encountered an error. Goodbye.');
+    response.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, 'I apologize, but I encountered an error. Goodbye.');
     response.hangup();
-    return res.send(response.toString());
+    return res.type('text/xml').send(response.toString());
   } catch (error) {
     console.error('Error handling Twilio voice webhook:', error);
+    console.error('Error stack:', error.stack);
     const twilio = require('twilio');
     const response = new twilio.twiml.VoiceResponse();
-    response.say('I apologize, but I encountered an error. Please try again later.');
+    response.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, 'I apologize, but an application error has occurred. Please try again later.');
     response.hangup();
-    return res.send(response.toString());
+    return res.type('text/xml').send(response.toString());
   }
 });
 

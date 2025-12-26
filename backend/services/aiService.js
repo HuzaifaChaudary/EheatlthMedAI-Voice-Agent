@@ -207,8 +207,16 @@ class AIService {
       ? parseInt(agentConfig.max_tokens, 10) 
       : (agentConfig.max_tokens || 1000);
 
+    // Add emergency forwarding function for all agents (voice calls)
+    const emergencyForwardingService = require('./emergencyForwardingService');
+    const forwardFunction = emergencyForwardingService.getForwardingFunction();
+    
     // Add appointment booking functions for Front Desk agents
-    let functions = agentConfig.functions || null;
+    let functions = agentConfig.functions || [forwardFunction];
+    if (!functions.includes(forwardFunction)) {
+      functions = [forwardFunction, ...(functions || [])];
+    }
+    
     if (agentConfig.type && agentConfig.type.toLowerCase().replace(/\s+/g, '_') === 'front_desk') {
       const appointmentBookingService = require('./appointmentBookingService');
       const bookingFunctions = appointmentBookingService.getBookingFunctions();

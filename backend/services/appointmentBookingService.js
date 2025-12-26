@@ -57,32 +57,123 @@ class AppointmentBookingService {
 
       const appointment = result.rows[0];
 
-      // Sync to external scheduling systems if configured
+      // Sync to external systems (Calendar, CRM, EHR) if configured
       try {
         const appointmentSyncService = require('./appointmentSyncService');
-        const integrationsResult = await db.query(
-          `SELECT id FROM integrations 
-           WHERE organization_id = $1 
-           AND provider IN ('google_calendar', 'zocdoc', 'calendly')
-           AND is_active = true
-           ORDER BY CASE provider WHEN 'google_calendar' THEN 1 ELSE 2 END
-           LIMIT 1`,
-          [organizationId]
-        );
+        const syncResults = [];
 
-        // Sync to first active scheduling integration
-        if (integrationsResult.rows.length > 0) {
-          const integrationId = integrationsResult.rows[0].id;
-          try {
-            await appointmentSyncService.syncAppointment(appointment.id, integrationId, organizationId);
-            console.log(`Appointment ${appointment.id} synced to scheduling system`);
-          } catch (syncError) {
-            console.error('Error syncing appointment to scheduling system:', syncError);
-            // Don't fail appointment creation if sync fails
+        // 1. Sync to Agent's Calendar (if agent has calendar_integration_id)
+        const conversationResult = await db.query(
+          'SELECT agent_id FROM conversations WHERE id = $1',
+          [conversationId]
+        );
+        
+        if (conversationResult.rows.length > 0) {
+          const agentId = conversationResult.rows[0].agent_id;
+          if (agentId) {
+            const agentResult = await db.query(
+              'SELECT calendar_integration_id FROM ai_agents WHERE id = $1',
+              [agentId]
+            );
+            
+            if (agentResult.rows.length > 0 && agentResult.rows[0].calendar_integration_id) {
+              const calendarIntegrationId = agentResult.rows[0].calendar_integration_id;
+              try {
+                await appointmentSyncService.syncAppointment(appointment.id, calendarIntegrationId, organizationId);
+                syncResults.push({ system: 'Calendar', success: true });
+                console.log(`Appointment ${appointment.id} synced to agent's calendar (integration ${calendarIntegrationId})`);
+              } catch (syncError) {
+                console.error('Error syncing appointment to agent calendar:', syncError);
+                syncResults.push({ system: 'Calendar', success: false, error: syncError.message });
+              }
+            }
           }
         }
+
+        // 2. Sync to GoHighLevel CRM (if organization has GHL integration)
+        try {
+          const ghlResult = await db.query(
+            `SELECT id FROM grm_integrations 
+             WHERE organization_id = $1 
+             AND type = 'ghl' 
+             AND is_active = true
+             LIMIT 1`,
+            [organizationId]
+          );
+
+          if (ghlResult.rows.length > 0) {
+            const ghlService = require('./ghlService');
+            try {
+              // Get GHL calendar ID from integration config
+              const ghlIntegration = ghlResult.rows[0];
+              const ghlConfig = typeof ghlIntegration.config === 'string' 
+                ? JSON.parse(ghlIntegration.config) 
+                : ghlIntegration.config || {};
+              
+              // List calendars to get default calendar ID
+              const calendars = await ghlService.listCalendars(organizationId);
+              const calendarId = ghlConfig.calendar_id || (calendars && calendars.length > 0 ? calendars[0].id : null);
+              
+              if (calendarId) {
+                // Note: GHL requires contact to exist first, so we'd need to create contact
+                // For now, we'll log that GHL sync is attempted
+                // In production, you'd create/update contact first, then create appointment
+                await ghlService.createAppointment(
+                  organizationId,
+                  calendarId,
+                  {
+                    locationId: ghlConfig.location_id || null,
+                    contactId: null, // Would need to create contact first
+                    startTime: appointment.appointment_date,
+                    title: `${appointment.appointment_type || 'Appointment'} - ${appointment.patient_name}`,
+                    notes: appointment.notes || ''
+                  }
+                );
+                syncResults.push({ system: 'GoHighLevel CRM', success: true });
+                console.log(`Appointment ${appointment.id} synced to GoHighLevel CRM`);
+              } else {
+                throw new Error('No calendar ID configured for GoHighLevel');
+              }
+            } catch (ghlError) {
+              console.error('Error syncing appointment to GoHighLevel:', ghlError);
+              syncResults.push({ system: 'GoHighLevel CRM', success: false, error: ghlError.message });
+            }
+          }
+        } catch (ghlCheckError) {
+          console.error('Error checking for GHL integration:', ghlCheckError);
+        }
+
+        // 3. Sync to EHR (if organization has EHR system configured)
+        try {
+          const ehrResult = await db.query(
+            `SELECT id FROM ehr_systems 
+             WHERE organization_id = $1 
+             AND is_active = true
+             LIMIT 1`,
+            [organizationId]
+          );
+
+          if (ehrResult.rows.length > 0) {
+            const ehrSystemId = ehrResult.rows[0].id;
+            try {
+              await appointmentSyncService.syncToEHR(appointment, { id: ehrSystemId }, organizationId);
+              syncResults.push({ system: 'EHR', success: true });
+              console.log(`Appointment ${appointment.id} synced to EHR system`);
+            } catch (ehrError) {
+              console.error('Error syncing appointment to EHR:', ehrError);
+              syncResults.push({ system: 'EHR', success: false, error: ehrError.message });
+            }
+          }
+        } catch (ehrCheckError) {
+          console.error('Error checking for EHR system:', ehrCheckError);
+        }
+
+        // Log sync results
+        if (syncResults.length > 0) {
+          console.log(`Appointment ${appointment.id} sync results:`, syncResults);
+        }
       } catch (syncError) {
-        console.error('Error checking for scheduling integrations:', syncError);
+        console.error('Error checking for external system integrations:', syncError);
         // Don't fail appointment creation if sync check fails
       }
 

@@ -236,10 +236,127 @@ router.post('/forgot-password', [
       [resetToken, resetTokenExpires, user.id]
     );
 
-    // In production, send email here
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
     
-    console.log('Password reset link for', email, ':', resetLink);
+    // Send password reset email
+    try {
+      const userInvitationService = require('../services/userInvitationService');
+      const nodemailer = require('nodemailer');
+      
+      // Get email transporter (try organization-specific first, then global)
+      let transporter = null;
+      
+      // Try to get user's organization for org-specific email config
+      const userOrgResult = await db.query('SELECT organization_id FROM users WHERE id = $1', [user.id]);
+      const organizationId = userOrgResult.rows[0]?.organization_id;
+      
+      if (organizationId) {
+        const reminderService = require('../services/reminderService');
+        transporter = await reminderService.getEmailTransporter(organizationId);
+      }
+      
+      // Fall back to global SMTP config
+      if (!transporter) {
+        const emailConfig = {
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: parseInt(process.env.SMTP_PORT || '587'),
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD
+          }
+        };
+        
+        if (emailConfig.auth.user && emailConfig.auth.pass) {
+          transporter = nodemailer.createTransport(emailConfig);
+        }
+      }
+      
+      if (transporter) {
+        const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@ehealthmedai.com';
+        const fromName = process.env.SMTP_FROM_NAME || 'EHealth Med AI';
+        
+        const mailOptions = {
+          from: `"${fromName}" <${fromEmail}>`,
+          to: email,
+          subject: 'Password Reset Request',
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                .button { display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+                .warning { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>Password Reset Request</h1>
+                </div>
+                <div class="content">
+                  <p>Hello,</p>
+                  
+                  <p>We received a request to reset your password for your EHealth Med AI account.</p>
+                  
+                  <div style="text-align: center;">
+                    <a href="${resetLink}" class="button">Reset Password</a>
+                  </div>
+                  
+                  <p>Or copy and paste this link into your browser:</p>
+                  <p style="word-break: break-all; color: #4F46E5;">${resetLink}</p>
+                  
+                  <div class="warning">
+                    <strong>⚠️ Important:</strong> This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
+                  </div>
+                  
+                  <p>If you have any questions, please contact support.</p>
+                  
+                  <div class="footer">
+                    <p>This is an automated message. Please do not reply to this email.</p>
+                    <p>© ${new Date().getFullYear()} EHealth Med AI. All rights reserved.</p>
+                  </div>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+          text: `
+Password Reset Request
+
+Hello,
+
+We received a request to reset your password for your EHealth Med AI account.
+
+Click this link to reset your password:
+${resetLink}
+
+⚠️ Important: This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
+
+If you have any questions, please contact support.
+
+---
+This is an automated message. Please do not reply to this email.
+© ${new Date().getFullYear()} EHealth Med AI. All rights reserved.
+          `
+        };
+        
+        await transporter.sendMail(mailOptions);
+        console.log('Password reset email sent successfully to', email);
+      } else {
+        console.warn('Email transporter not configured. Password reset link:', resetLink);
+      }
+    } catch (emailError) {
+      console.error('Error sending password reset email:', emailError);
+      // Don't fail the request if email fails - still log the link
+      console.log('Password reset link for', email, ':', resetLink);
+    }
 
     // Log action
     await db.query(

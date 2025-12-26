@@ -14,7 +14,7 @@ router.get('/', authenticateToken, async (req, res) => {
       const result = await db.query(
         `SELECT id, name, type, description, is_active, configuration, 
                 voice_model, voice_settings, system_prompt, temperature, max_tokens,
-                phone_number_id, greeting_message, fallback_message, business_hours,
+                phone_number_id, calendar_integration_id, greeting_message, fallback_message, business_hours,
                 escalation_rules, created_at, organization_id
          FROM ai_agents 
          WHERE organization_id = $1
@@ -41,7 +41,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const result = await db.query(
       `SELECT id, name, type, description, is_active, configuration, 
               voice_model, voice_settings, system_prompt, temperature, max_tokens,
-              phone_number_id, greeting_message, fallback_message, business_hours,
+              phone_number_id, calendar_integration_id, greeting_message, fallback_message, business_hours,
               escalation_rules, created_at, organization_id
        FROM ai_agents 
        WHERE organization_id = $1
@@ -75,12 +75,12 @@ router.get('/:id', authenticateToken, async (req, res) => {
     let result;
     if (req.user.role === 'admin') {
       result = await db.query(
-        'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at, organization_id FROM ai_agents WHERE id = $1',
+        'SELECT id, name, type, description, is_active, configuration, phone_number_id, calendar_integration_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, escalation_rules, created_at, organization_id FROM ai_agents WHERE id = $1',
         [id]
       );
     } else if (orgId) {
       result = await db.query(
-        'SELECT id, name, type, description, is_active, configuration, phone_number_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, created_at, organization_id FROM ai_agents WHERE id = $1 AND organization_id = $2',
+        'SELECT id, name, type, description, is_active, configuration, phone_number_id, calendar_integration_id, voice_model, system_prompt, temperature, max_tokens, greeting_message, escalation_rules, created_at, organization_id FROM ai_agents WHERE id = $1 AND organization_id = $2',
         [id, orgId]
       );
     } else {
@@ -111,7 +111,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const {
       name, type, description, configuration,
       voice_model, voice_settings, system_prompt, temperature, max_tokens,
-      phone_number_id, greeting_message, fallback_message, business_hours,
+      phone_number_id, calendar_integration_id, greeting_message, fallback_message, business_hours,
       escalation_rules
     } = req.body;
 
@@ -123,16 +123,16 @@ router.post('/', authenticateToken, async (req, res) => {
       `INSERT INTO ai_agents (
         organization_id, name, type, description, configuration,
         voice_model, voice_settings, system_prompt, temperature, max_tokens,
-        phone_number_id, greeting_message, fallback_message, business_hours,
+        phone_number_id, calendar_integration_id, greeting_message, fallback_message, business_hours,
         escalation_rules
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *`,
       [
         orgId, name, type, description || null,
         configuration ? JSON.stringify(configuration) : null,
         voice_model || 'openai', voice_settings ? JSON.stringify(voice_settings) : null,
         system_prompt || null, temperature || 0.7, max_tokens || 1000,
-        phone_number_id || null, greeting_message || null, fallback_message || null,
+        phone_number_id || null, calendar_integration_id || null, greeting_message || null, fallback_message || null,
         business_hours ? JSON.stringify(business_hours) : null,
         escalation_rules ? JSON.stringify(escalation_rules) : null
       ]
@@ -171,7 +171,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const {
       name, type, description, is_active, configuration,
       voice_model, voice_settings, system_prompt, temperature, max_tokens,
-      phone_number_id, greeting_message, fallback_message, business_hours,
+      phone_number_id, calendar_integration_id, greeting_message, fallback_message, business_hours,
       escalation_rules
     } = req.body;
 
@@ -188,12 +188,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
            temperature = COALESCE($9, temperature),
            max_tokens = COALESCE($10, max_tokens),
            phone_number_id = COALESCE($11, phone_number_id),
-           greeting_message = COALESCE($12, greeting_message),
-           fallback_message = COALESCE($13, fallback_message),
-           business_hours = COALESCE($14::jsonb, business_hours),
-           escalation_rules = COALESCE($15::jsonb, escalation_rules),
+           calendar_integration_id = COALESCE($12, calendar_integration_id),
+           greeting_message = COALESCE($13, greeting_message),
+           fallback_message = COALESCE($14, fallback_message),
+           business_hours = COALESCE($15::jsonb, business_hours),
+           escalation_rules = COALESCE($16::jsonb, escalation_rules),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $16 AND organization_id = $17
+       WHERE id = $17 AND organization_id = $18
        RETURNING *`,
       [
         name || null, type || null, description || null,
@@ -201,7 +202,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         configuration ? JSON.stringify(configuration) : null,
         voice_model || null, voice_settings ? JSON.stringify(voice_settings) : null,
         system_prompt || null, temperature || null, max_tokens || null,
-        phone_number_id || null, greeting_message || null, fallback_message || null,
+        phone_number_id || null, calendar_integration_id || null, greeting_message || null, fallback_message || null,
         business_hours ? JSON.stringify(business_hours) : null,
         escalation_rules ? JSON.stringify(escalation_rules) : null,
         id, orgId

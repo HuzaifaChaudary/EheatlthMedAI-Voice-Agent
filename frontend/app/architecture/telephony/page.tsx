@@ -12,6 +12,9 @@ interface PhoneNumber {
   provider: string
   is_active: boolean
   capabilities: any
+  agent_id?: number
+  agent_name?: string
+  agent_type?: string
 }
 
 interface CallLog {
@@ -676,6 +679,27 @@ export default function TelephonyPage() {
                         {number.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
+                    {number.agent_id && number.agent_name ? (
+                      <div className="mb-3 p-2 bg-teal-500/10 border border-teal-500/30 rounded-lg">
+                        <p className="text-xs text-slate-400 mb-1">Linked Agent:</p>
+                        <div className="flex items-center gap-2">
+                          <Link 
+                            href={`/dashboard/agents/${number.agent_id}`}
+                            className="text-teal-400 hover:text-teal-300 font-medium text-sm"
+                          >
+                            {number.agent_name}
+                          </Link>
+                          {number.agent_type && (
+                            <span className="text-xs text-slate-400">({number.agent_type})</span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-3 p-2 bg-slate-800/50 border border-slate-700/50 rounded-lg">
+                        <p className="text-xs text-slate-500">No agent linked</p>
+                        <p className="text-xs text-slate-600 mt-1">Link an agent in Agent Settings</p>
+                      </div>
+                    )}
                     {number.capabilities && (
                       <div className="flex flex-wrap gap-2">
                         {Object.keys(number.capabilities).map((cap) => (

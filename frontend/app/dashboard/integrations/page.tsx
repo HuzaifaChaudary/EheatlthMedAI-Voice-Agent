@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Calendar, Briefcase, Webhook, Plus, CheckCircle, XCircle, RefreshCw, Settings, TestTube, AlertCircle, Clock, Activity } from 'lucide-react'
-import { get, post, put } from '@/lib/api'
+import { Calendar, Briefcase, Webhook, Plus, CheckCircle, XCircle, RefreshCw, Settings, TestTube, AlertCircle, Clock, Activity, Trash2 } from 'lucide-react'
+import { get, post, put, del } from '@/lib/api'
 import { isAuthenticated } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 interface Integration {
   id: number
@@ -25,7 +26,7 @@ interface TestResult {
 
 export default function IntegrationsPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'calendar' | 'crm' | 'webhooks'>('calendar')
+  const [activeTab, setActiveTab] = useState<'calendar' | 'crm' | 'webhooks' | 'ehr'>('calendar')
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -150,6 +151,7 @@ export default function IntegrationsPage() {
       const activeCount = integrationsList.filter((i: Integration) => i.is_active).length
       const calendarCount = integrationsList.filter((i: Integration) => i.type === 'scheduling').length
       const crmCount = integrationsList.filter((i: Integration) => i.type === 'crm').length
+      const ehrCount = integrationsList.filter((i: Integration) => i.type === 'ehr' || i.type === 'emr' || i.type === 'billing').length
       
       // Clear previous issue messages
       setErrorMessages(prev => {
@@ -186,6 +188,8 @@ export default function IntegrationsPage() {
             'inactive-integrations': 'You have CRM integrations but they are inactive. Enable them to start syncing.' 
           }))
         }
+      } else if (activeTab === 'ehr') {
+        // EHR integrations are managed in /architecture/ehr, so we don't show error messages here
       }
     } catch (error: any) {
       console.error('Error fetching integrations:', error)
@@ -332,6 +336,55 @@ export default function IntegrationsPage() {
     }
   }
 
+  const [deletingIntegration, setDeletingIntegration] = useState<number | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null)
+
+  const handleDeleteIntegration = async (id: number) => {
+    if (showDeleteConfirm !== id) {
+      setShowDeleteConfirm(id)
+      return
+    }
+
+    setDeletingIntegration(id)
+    setShowDeleteConfirm(null)
+
+    try {
+      const response = await del(`/integrations/${id}`)
+
+      if (response.error) {
+        setErrorMessages(prev => ({ ...prev, [id]: response.error || 'Failed to delete integration' }))
+        setTimeout(() => {
+          setErrorMessages(prev => {
+            const newErrors = { ...prev }
+            delete newErrors[id]
+            return newErrors
+          })
+        }, 5000)
+        return
+      }
+
+      // Remove from list
+      setIntegrations(integrations.filter(i => i.id !== id))
+      setErrorMessages(prev => {
+        const newErrors = { ...prev }
+        delete newErrors[id]
+        return newErrors
+      })
+    } catch (error: any) {
+      console.error('Error deleting integration:', error)
+      setErrorMessages(prev => ({ ...prev, [id]: error.message || 'Error deleting integration' }))
+      setTimeout(() => {
+        setErrorMessages(prev => {
+          const newErrors = { ...prev }
+          delete newErrors[id]
+          return newErrors
+        })
+      }, 5000)
+    } finally {
+      setDeletingIntegration(null)
+    }
+  }
+
   const testConnection = async (integration: Integration) => {
     setTestingIntegration(integration.id)
     setErrorMessages(prev => {
@@ -417,6 +470,8 @@ export default function IntegrationsPage() {
       return integration.type === 'scheduling'
     } else if (activeTab === 'crm') {
       return integration.type === 'crm'
+    } else if (activeTab === 'ehr') {
+      return integration.type === 'ehr' || integration.type === 'emr' || integration.type === 'billing'
     }
     return false
   })
@@ -474,15 +529,28 @@ export default function IntegrationsPage() {
         <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">
-              {activeTab === 'calendar' ? 'Calendar Integrations' : 'CRM Integrations'}
+              {activeTab === 'calendar' ? 'Calendar Integrations' : 
+               activeTab === 'crm' ? 'CRM Integrations' :
+               activeTab === 'ehr' ? 'EMR/EHR Integrations' : 'Integrations'}
             </h2>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-            >
-              <Plus size={18} />
-              Add Integration
-            </button>
+            {activeTab !== 'ehr' && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <Plus size={18} />
+                Add Integration
+              </button>
+            )}
+            {activeTab === 'ehr' && (
+              <Link
+                href="/architecture/ehr"
+                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <Plus size={18} />
+                Configure EMR/EHR
+              </Link>
+            )}
           </div>
 
           {/* Status Dashboard Summary */}
@@ -593,7 +661,21 @@ export default function IntegrationsPage() {
             </div>
           )}
 
-          {filteredIntegrations.length === 0 ? (
+          {activeTab === 'ehr' && filteredIntegrations.length === 0 ? (
+            <div className="text-center py-12">
+              <Activity size={48} className="text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400 mb-4">No EMR/EHR integrations configured</p>
+              <p className="text-sm text-slate-500 mb-6">
+                EMR/EHR integrations are configured in the Architecture section. Set up FHIR connectors, HL7 listeners, and connect to your EHR system.
+              </p>
+              <Link
+                href="/architecture/ehr"
+                className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg inline-block transition-colors"
+              >
+                Go to EMR/EHR Configuration
+              </Link>
+            </div>
+          ) : filteredIntegrations.length === 0 ? (
             <div className="text-center py-12">
               <Calendar size={48} className="text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400 mb-4">No {activeTab} integrations configured</p>
@@ -678,6 +760,35 @@ export default function IntegrationsPage() {
                           }`}
                         >
                           {integration.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteIntegration(integration.id)}
+                          disabled={deletingIntegration === integration.id}
+                          className={`px-3 py-1 rounded text-sm transition-colors flex items-center gap-1 ${
+                            deletingIntegration === integration.id
+                              ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                              : showDeleteConfirm === integration.id
+                              ? 'bg-red-600 text-white hover:bg-red-700'
+                              : 'bg-red-600/20 text-red-400 hover:bg-red-600/30'
+                          }`}
+                          title={showDeleteConfirm === integration.id ? 'Click again to confirm deletion' : 'Delete integration'}
+                        >
+                          {deletingIntegration === integration.id ? (
+                            <>
+                              <RefreshCw size={14} className="animate-spin" />
+                              Deleting...
+                            </>
+                          ) : showDeleteConfirm === integration.id ? (
+                            <>
+                              <Trash2 size={14} />
+                              Confirm Delete
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 size={14} />
+                              Delete
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>

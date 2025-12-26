@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/permissions');
+const userInvitationService = require('../services/userInvitationService');
 const router = express.Router();
 
 // Use centralized permission middleware
@@ -11,7 +12,7 @@ const requireAdmin = requireRole('admin');
 // Create user (admin only)
 router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { email, password, firstName, lastName, role } = req.body;
+    const { email, password, firstName, lastName, role, organizationId } = req.body;
 
     // Validate required fields
     if (!email || !password || !firstName || !lastName || !role) {
@@ -35,6 +36,14 @@ router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
 
+    // Validate organization if provided
+    if (organizationId) {
+      const orgCheck = await db.query('SELECT id FROM organizations WHERE id = $1', [organizationId]);
+      if (orgCheck.rows.length === 0) {
+        return res.status(400).json({ message: 'Invalid organization ID' });
+      }
+    }
+
     // Check if user already exists
     const existingUser = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existingUser.rows.length > 0) {
@@ -45,12 +54,12 @@ router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Create user
+    // Create user with optional organization_id
     const result = await db.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
-       RETURNING id, email, first_name, last_name, role, is_active, created_at`,
-      [email, passwordHash, firstName, lastName, role, true]
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, is_active, organization_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+       RETURNING id, email, first_name, last_name, role, is_active, organization_id, created_at`,
+      [email, passwordHash, firstName, lastName, role, true, organizationId || null]
     );
 
     const newUser = result.rows[0];
@@ -63,7 +72,7 @@ router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
         'CREATE_USER',
         'users',
         newUser.id,
-        JSON.stringify({ email, role, created_by: req.user.email })
+        JSON.stringify({ email, role, organizationId: organizationId || null, created_by: req.user.email })
       ]
     );
 
@@ -76,6 +85,7 @@ router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
         lastName: newUser.last_name,
         role: newUser.role,
         isActive: newUser.is_active,
+        organizationId: newUser.organization_id,
         createdAt: newUser.created_at
       }
     });
@@ -206,6 +216,80 @@ router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) =>
   } catch (error) {
     console.error('Error deleting user:', error);
     res.status(500).json({ message: 'Error deleting user' });
+  }
+});
+
+// Invite user to organization (admin only)
+router.post('/users/invite', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { email, firstName, lastName, role, organizationId } = req.body;
+
+    // Validate required fields
+    if (!email || !firstName || !lastName || !organizationId) {
+      return res.status(400).json({ message: 'Email, firstName, lastName, and organizationId are required' });
+    }
+
+    // Validate role
+    const validRoles = ['admin', 'patient', 'doctor', 'client', 'user'];
+    const userRole = role || 'user';
+    if (!validRoles.includes(userRole)) {
+      return res.status(400).json({ message: 'Invalid role. Must be one of: admin, patient, doctor, client, user' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    // Verify organization exists
+    const orgResult = await db.query('SELECT id, name FROM organizations WHERE id = $1', [organizationId]);
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Organization not found' });
+    }
+
+    // Invite user
+    const result = await userInvitationService.inviteUserToOrganization(
+      { email, firstName, lastName, role: userRole },
+      organizationId,
+      { id: req.user.id, email: req.user.email }
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ message: result.message || 'Failed to invite user' });
+    }
+
+    // If email failed, include temporary password in response
+    const response = {
+      message: result.emailSent 
+        ? 'User invited successfully. Invitation email has been sent.' 
+        : 'User created successfully, but invitation email could not be sent.',
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        firstName: result.user.first_name,
+        lastName: result.user.last_name,
+        role: result.user.role,
+        isActive: result.user.is_active,
+        organizationId: result.user.organization_id,
+        createdAt: result.user.created_at
+      },
+      emailSent: result.emailSent
+    };
+
+    // Only include temporary password if email failed (for admin to manually share)
+    if (!result.emailSent && result.temporaryPassword) {
+      response.temporaryPassword = result.temporaryPassword;
+      response.emailError = result.emailError;
+    }
+
+    res.status(201).json(response);
+  } catch (error) {
+    console.error('Error inviting user:', error);
+    if (error.message.includes('already exists') || error.message.includes('already a member')) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error inviting user', error: error.message });
   }
 });
 

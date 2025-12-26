@@ -44,7 +44,7 @@ else
 fi
 
 # Check current branch
-CURRENT_BRANCH=\$(git branch --show-current 2>/dev/null || echo "master")
+CURRENT_BRANCH=\$(git branch --show-current 2>/dev/null || echo "main")
 echo "📍 Current branch: \$CURRENT_BRANCH"
 EOF
 
@@ -69,17 +69,17 @@ git stash push -m "Backup before deploy $(date)" -- backend/.env frontend/.env f
 echo "⬇️  Fetching latest code from GitHub..."
 git fetch origin
 
-# Get current branch or default to master
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "master")
+# Get current branch or default to main
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 if [ "$CURRENT_BRANCH" = "" ]; then
-    CURRENT_BRANCH="master"
+    CURRENT_BRANCH="main"
 fi
 
 echo "🔄 Pulling from origin/$CURRENT_BRANCH..."
 git pull origin $CURRENT_BRANCH || {
     echo "⚠️  Pull failed, trying to reset to origin..."
     git fetch origin
-    git reset --hard origin/$CURRENT_BRANCH || git reset --hard origin/master
+    git reset --hard origin/$CURRENT_BRANCH || git reset --hard origin/main
 }
 
 # Restore .env files

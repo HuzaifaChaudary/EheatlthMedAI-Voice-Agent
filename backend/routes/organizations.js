@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const userInvitationService = require('../services/userInvitationService');
 const router = express.Router();
 
 // Create new organization (admin only) - for creating sub-accounts
@@ -23,7 +24,8 @@ router.post('/', authenticateToken, async (req, res) => {
       max_agents = 10,
       max_users = 20,
       max_calls_per_month = 5000,
-      user_email // Optional: email of user to assign to this organization
+      user_email, // Optional: email of existing user to assign to this organization
+      invite_user // Optional: { email, firstName, lastName, role } - create new user and invite
     } = req.body;
 
     if (!name) {
@@ -40,8 +42,30 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const newOrg = orgResult.rows[0];
 
-    // If user_email provided, link that user to the organization
-    if (user_email) {
+    let invitedUser = null;
+    let invitationResult = null;
+
+    // If invite_user provided, create new user and send invitation
+    if (invite_user && invite_user.email) {
+      try {
+        invitationResult = await userInvitationService.inviteUserToOrganization(
+          {
+            email: invite_user.email,
+            firstName: invite_user.firstName || invite_user.first_name,
+            lastName: invite_user.lastName || invite_user.last_name,
+            role: invite_user.role || 'user'
+          },
+          newOrg.id,
+          { id: req.user.id, email: req.user.email }
+        );
+        invitedUser = invitationResult.user;
+      } catch (error) {
+        console.error('Error inviting user during organization creation:', error);
+        // Continue with organization creation even if invitation fails
+      }
+    }
+    // If user_email provided, link existing user to the organization
+    else if (user_email) {
       await db.query(
         'UPDATE users SET organization_id = $1 WHERE email = $2',
         [newOrg.id, user_email]
@@ -51,13 +75,44 @@ router.post('/', authenticateToken, async (req, res) => {
     // Log action
     await db.query(
       'INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)',
-      [req.user.id, 'CREATE_ORGANIZATION', 'organizations', newOrg.id, JSON.stringify({ name, subdomain, user_email })]
+      [
+        req.user.id, 
+        'CREATE_ORGANIZATION', 
+        'organizations', 
+        newOrg.id, 
+        JSON.stringify({ 
+          name, 
+          subdomain, 
+          user_email, 
+          invite_user: invite_user ? invite_user.email : null,
+          invitation_sent: invitationResult?.emailSent || false
+        })
+      ]
     );
 
-    res.status(201).json({ 
+    const response = {
       message: 'Organization created successfully',
-      organization: newOrg 
-    });
+      organization: newOrg
+    };
+
+    // Include invitation details if user was invited
+    if (invitedUser) {
+      response.invitedUser = {
+        id: invitedUser.id,
+        email: invitedUser.email,
+        firstName: invitedUser.first_name,
+        lastName: invitedUser.last_name
+      };
+      response.emailSent = invitationResult?.emailSent || false;
+      
+      // Include temporary password if email failed
+      if (!invitationResult?.emailSent && invitationResult?.temporaryPassword) {
+        response.temporaryPassword = invitationResult.temporaryPassword;
+        response.emailError = invitationResult.emailError;
+      }
+    }
+
+    res.status(201).json(response);
   } catch (error) {
     console.error('Error creating organization:', error);
     if (error.code === '23505') { // Unique violation

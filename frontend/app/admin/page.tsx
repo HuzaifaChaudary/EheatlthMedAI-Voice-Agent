@@ -77,14 +77,31 @@ export default function AdminDashboardPage() {
     max_agents: 10,
     max_users: 20,
     max_calls_per_month: 5000,
-    user_email: ''
+    user_email: '', // For existing user
+    invite_user: false, // Toggle to invite new user
+    invite_email: '',
+    invite_firstName: '',
+    invite_lastName: '',
+    invite_role: 'user'
   })
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteOrgId, setInviteOrgId] = useState<number | null>(null)
+  const [inviteFormData, setInviteFormData] = useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    role: 'user'
+  })
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState<any>(null)
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     password: '',
-    role: 'user'
+    role: 'user',
+    organizationId: ''
   })
 
   useEffect(() => {
@@ -186,20 +203,42 @@ export default function AdminDashboardPage() {
 
     setCreateOrgLoading(true)
     try {
-      const response = await post('/organizations', {
+      const payload: any = {
         name: orgFormData.name,
         subdomain: orgFormData.subdomain || null,
         domain: orgFormData.domain || null,
         subscription_tier: orgFormData.subscription_tier,
         max_agents: parseInt(orgFormData.max_agents.toString()),
         max_users: parseInt(orgFormData.max_users.toString()),
-        max_calls_per_month: parseInt(orgFormData.max_calls_per_month.toString()),
-        user_email: orgFormData.user_email || null
-      })
+        max_calls_per_month: parseInt(orgFormData.max_calls_per_month.toString())
+      }
+
+      // If inviting new user, use invite_user object
+      if (orgFormData.invite_user && orgFormData.invite_email) {
+        payload.invite_user = {
+          email: orgFormData.invite_email,
+          firstName: orgFormData.invite_firstName,
+          lastName: orgFormData.invite_lastName,
+          role: orgFormData.invite_role
+        }
+      } else if (orgFormData.user_email) {
+        // Otherwise, assign existing user
+        payload.user_email = orgFormData.user_email
+      }
+
+      const response = await post('/organizations', payload)
 
       if (response.error) {
         setCreateOrgError(response.error)
       } else {
+        // Show invitation result if user was invited
+        if (response.data?.invitedUser) {
+          const successMsg = response.data.emailSent
+            ? `Organization created! Invitation email sent to ${response.data.invitedUser.email}`
+            : `Organization created! User created but email failed. Temporary password: ${response.data.temporaryPassword}`
+          alert(successMsg)
+        }
+
         setShowCreateOrgModal(false)
         setOrgFormData({
           name: '',
@@ -209,7 +248,12 @@ export default function AdminDashboardPage() {
           max_agents: 10,
           max_users: 20,
           max_calls_per_month: 5000,
-          user_email: ''
+          user_email: '',
+          invite_user: false,
+          invite_email: '',
+          invite_firstName: '',
+          invite_lastName: '',
+          invite_role: 'user'
         })
         fetchOrganizations()
       }
@@ -217,6 +261,53 @@ export default function AdminDashboardPage() {
       setCreateOrgError(error.message || 'Failed to create organization')
     } finally {
       setCreateOrgLoading(false)
+    }
+  }
+
+  const handleInviteUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setInviteError('')
+    setInviteSuccess(null)
+
+    if (!inviteFormData.email || !inviteFormData.firstName || !inviteFormData.lastName || !inviteOrgId) {
+      setInviteError('All fields are required')
+      return
+    }
+
+    setInviteLoading(true)
+    try {
+      const response = await post('/admin/users/invite', {
+        email: inviteFormData.email,
+        firstName: inviteFormData.firstName,
+        lastName: inviteFormData.lastName,
+        role: inviteFormData.role,
+        organizationId: inviteOrgId
+      })
+
+      if (response.error) {
+        setInviteError(response.error)
+      } else {
+        setInviteSuccess({
+          email: response.data.user.email,
+          emailSent: response.data.emailSent,
+          temporaryPassword: response.data.temporaryPassword,
+          emailError: response.data.emailError
+        })
+        setInviteFormData({
+          email: '',
+          firstName: '',
+          lastName: '',
+          role: 'user'
+        })
+        // Refresh organization details if viewing one
+        if (selectedOrg) {
+          fetchOrganizationDetails(selectedOrg.organization.id)
+        }
+      }
+    } catch (error: any) {
+      setInviteError(error.message || 'Failed to invite user')
+    } finally {
+      setInviteLoading(false)
     }
   }
 
@@ -265,7 +356,11 @@ export default function AdminDashboardPage() {
     }
 
     try {
-      const response = await post('/admin/users', sanitizedData)
+      const payload = {
+        ...sanitizedData,
+        organizationId: formData.organizationId || null
+      }
+      const response = await post('/admin/users', payload)
       
       if (response.data?.user) {
         // Reset form
@@ -274,13 +369,18 @@ export default function AdminDashboardPage() {
           lastName: '',
           email: '',
           password: '',
-          role: 'user'
+          role: 'user',
+          organizationId: ''
         })
         setShowCreateModal(false)
         // Refresh users list
         fetchUsers()
         // Refresh stats
         fetchStats()
+        // Refresh organizations if on that tab
+        if (activeTab === 'organizations') {
+          fetchOrganizations()
+        }
       } else {
         setCreateError(response.error || response.message || 'Failed to create user')
       }
@@ -409,15 +509,28 @@ export default function AdminDashboardPage() {
                       {selectedOrg.organization.domain || selectedOrg.organization.subdomain || 'No domain'}
                     </p>
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded text-sm font-semibold ${
-                      selectedOrg.organization.is_active
-                        ? 'bg-green-500 text-white'
-                        : 'bg-red-500 text-white'
-                    }`}
-                  >
-                    {selectedOrg.organization.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setInviteOrgId(selectedOrg.organization.id)
+                        setShowInviteModal(true)
+                        setInviteSuccess(null)
+                        setInviteError('')
+                      }}
+                      className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                    >
+                      + Invite User
+                    </button>
+                    <span
+                      className={`px-3 py-1 rounded text-sm font-semibold ${
+                        selectedOrg.organization.is_active
+                          ? 'bg-green-500 text-white'
+                          : 'bg-red-500 text-white'
+                      }`}
+                    >
+                      {selectedOrg.organization.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Resources Grid */}
@@ -690,17 +803,18 @@ export default function AdminDashboardPage() {
       {showCreateModal && (
         <div 
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" 
-          onClick={() => {
-            setShowCreateModal(false)
-            setCreateError('')
-            setFormData({
-              firstName: '',
-              lastName: '',
-              email: '',
-              password: '',
-              role: 'user'
-            })
-          }}
+            onClick={() => {
+              setShowCreateModal(false)
+              setCreateError('')
+              setFormData({
+                firstName: '',
+                lastName: '',
+                email: '',
+                password: '',
+                role: 'user',
+                organizationId: ''
+              })
+            }}
         >
           <div 
             className="bg-slate-900 rounded-xl p-8 max-w-md w-full border border-white/20" 
@@ -780,6 +894,25 @@ export default function AdminDashboardPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Assign to Organization (Optional)</label>
+                <select
+                  value={formData.organizationId}
+                  onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="" className="bg-slate-800">No Organization (Global User)</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id.toString()} className="bg-slate-800">
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-slate-400 text-xs mt-1">
+                  Select a sub-account to assign this user to. Leave blank to create a global admin user.
+                </p>
+              </div>
+
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"
@@ -791,7 +924,8 @@ export default function AdminDashboardPage() {
                       lastName: '',
                       email: '',
                       password: '',
-                      role: 'user'
+                      role: 'user',
+                      organizationId: ''
                     })
                   }}
                   className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
@@ -869,16 +1003,84 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-white mb-2 text-sm font-medium">Assign User (Optional)</label>
-                <input
-                  type="email"
-                  value={orgFormData.user_email}
-                  onChange={(e) => setOrgFormData({ ...orgFormData, user_email: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  placeholder="user@example.com (existing user email)"
-                />
-                <p className="text-slate-400 text-xs mt-1">If provided, this user will be assigned to the new organization</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="flex items-center gap-2 text-white mb-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={orgFormData.invite_user}
+                      onChange={(e) => setOrgFormData({ ...orgFormData, invite_user: e.target.checked, user_email: '' })}
+                      className="rounded"
+                    />
+                    Invite New User to Organization
+                  </label>
+                  <p className="text-slate-400 text-xs">Create a new user account and send invitation email</p>
+                </div>
+
+                {orgFormData.invite_user ? (
+                  <div className="bg-white/5 p-4 rounded-lg space-y-3 border border-white/10">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-white mb-1 text-xs font-medium">First Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={orgFormData.invite_firstName}
+                          onChange={(e) => setOrgFormData({ ...orgFormData, invite_firstName: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                          placeholder="John"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white mb-1 text-xs font-medium">Last Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={orgFormData.invite_lastName}
+                          onChange={(e) => setOrgFormData({ ...orgFormData, invite_lastName: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                          placeholder="Doe"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-white mb-1 text-xs font-medium">Email *</label>
+                      <input
+                        type="email"
+                        required
+                        value={orgFormData.invite_email}
+                        onChange={(e) => setOrgFormData({ ...orgFormData, invite_email: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                        placeholder="user@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white mb-1 text-xs font-medium">Role</label>
+                      <select
+                        value={orgFormData.invite_role}
+                        onChange={(e) => setOrgFormData({ ...orgFormData, invite_role: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                      >
+                        <option value="user" className="bg-slate-800">User</option>
+                        <option value="doctor" className="bg-slate-800">Doctor</option>
+                        <option value="client" className="bg-slate-800">Client</option>
+                        <option value="patient" className="bg-slate-800">Patient</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-white mb-2 text-sm font-medium">Assign Existing User (Optional)</label>
+                    <input
+                      type="email"
+                      value={orgFormData.user_email}
+                      onChange={(e) => setOrgFormData({ ...orgFormData, user_email: e.target.value })}
+                      className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      placeholder="user@example.com (existing user email)"
+                    />
+                    <p className="text-slate-400 text-xs mt-1">If provided, this existing user will be assigned to the new organization</p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -943,6 +1145,127 @@ export default function AdminDashboardPage() {
                 >
                   {createOrgLoading ? 'Creating...' : 'Create Organization'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invite User Modal */}
+      {showInviteModal && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowInviteModal(false)
+            setInviteError('')
+            setInviteSuccess(null)
+          }}
+        >
+          <div
+            className="bg-slate-900 rounded-xl p-8 max-w-md w-full border border-white/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-2xl font-bold text-white mb-6">Invite User to Organization</h2>
+
+            {inviteError && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm">
+                {inviteError}
+              </div>
+            )}
+
+            {inviteSuccess && (
+              <div className="mb-4 p-4 bg-green-500/20 border border-green-500 rounded-lg">
+                <p className="text-green-200 font-semibold mb-2">
+                  {inviteSuccess.emailSent ? '✓ Invitation email sent successfully!' : '✓ User created, but email failed'}
+                </p>
+                <p className="text-green-200 text-sm mb-2">User: {inviteSuccess.email}</p>
+                {!inviteSuccess.emailSent && inviteSuccess.temporaryPassword && (
+                  <div className="mt-3 p-3 bg-slate-800 rounded border border-yellow-500/50">
+                    <p className="text-yellow-200 text-xs mb-1">⚠️ Please share this temporary password manually:</p>
+                    <p className="text-white font-mono text-lg">{inviteSuccess.temporaryPassword}</p>
+                    {inviteSuccess.emailError && (
+                      <p className="text-yellow-200 text-xs mt-2">Error: {inviteSuccess.emailError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <form onSubmit={handleInviteUser} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteFormData.firstName}
+                    onChange={(e) => setInviteFormData({ ...inviteFormData, firstName: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="John"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white mb-2 text-sm font-medium">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={inviteFormData.lastName}
+                    onChange={(e) => setInviteFormData({ ...inviteFormData, lastName: e.target.value })}
+                    className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Doe"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={inviteFormData.email}
+                  onChange={(e) => setInviteFormData({ ...inviteFormData, email: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="user@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-white mb-2 text-sm font-medium">Role</label>
+                <select
+                  value={inviteFormData.role}
+                  onChange={(e) => setInviteFormData({ ...inviteFormData, role: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="user" className="bg-slate-800">User</option>
+                  <option value="doctor" className="bg-slate-800">Doctor</option>
+                  <option value="client" className="bg-slate-800">Client</option>
+                  <option value="patient" className="bg-slate-800">Patient</option>
+                </select>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInviteModal(false)
+                    setInviteError('')
+                    setInviteSuccess(null)
+                    setInviteFormData({ email: '', firstName: '', lastName: '', role: 'user' })
+                  }}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
+                  disabled={inviteLoading}
+                >
+                  {inviteSuccess ? 'Close' : 'Cancel'}
+                </button>
+                {!inviteSuccess && (
+                  <button
+                    type="submit"
+                    className="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={inviteLoading}
+                  >
+                    {inviteLoading ? 'Sending...' : 'Send Invitation'}
+                  </button>
+                )}
               </div>
             </form>
           </div>

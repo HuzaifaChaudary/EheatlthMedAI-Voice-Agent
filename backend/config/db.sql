@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
     agent_id INTEGER REFERENCES ai_agents(id),
+    organization_id INTEGER REFERENCES organizations(id),
     patient_name VARCHAR(255),
     patient_phone VARCHAR(20),
     status VARCHAR(50) DEFAULT 'active',

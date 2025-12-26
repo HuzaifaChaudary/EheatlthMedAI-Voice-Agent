@@ -163,7 +163,6 @@ export default function CreateAgentPage() {
                                     className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-teal-500 transition-colors"
                                 >
                                     <option value="openai">OpenAI (Realtime)</option>
-                                    <option value="elliza">Elliza.ai</option>
                                     <option value="deepgram">Deepgram</option>
                                     <option value="elevenlabs">ElevenLabs</option>
                                 </select>

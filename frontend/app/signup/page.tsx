@@ -125,9 +125,14 @@ export default function SignupPage() {
         <h1 className="text-3xl font-bold text-center text-gray-800 mb-2">
           Create Account
         </h1>
-        <p className="text-center text-gray-600 mb-8">
+        <p className="text-center text-gray-600 mb-4">
           Sign up for EHealth Med AI Platform
         </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+          <p className="text-xs text-blue-800">
+            <strong>Note:</strong> If you're setting up a client account (sub-account), please contact your administrator to be invited. This page is for general user registration.
+          </p>
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">

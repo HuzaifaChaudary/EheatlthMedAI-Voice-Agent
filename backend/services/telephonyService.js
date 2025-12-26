@@ -54,12 +54,28 @@ class TelephonyService {
       const agent = agentResult.rows[0];
 
       // Create conversation record
-      const conversationResult = await db.query(
-        `INSERT INTO conversations (organization_id, agent_id, patient_phone, status)
-         VALUES ($1, $2, $3, 'active')
-         RETURNING *`,
-        [organizationId, agentId, to]
-      );
+      // Try with organization_id first, fallback if column doesn't exist
+      let conversationResult;
+      try {
+        conversationResult = await db.query(
+          `INSERT INTO conversations (organization_id, agent_id, patient_phone, status)
+           VALUES ($1, $2, $3, 'active')
+           RETURNING *`,
+          [organizationId, agentId, to]
+        );
+      } catch (error) {
+        // Fallback if organization_id column doesn't exist
+        if (error.message.includes('organization_id')) {
+          conversationResult = await db.query(
+            `INSERT INTO conversations (agent_id, patient_phone, status)
+             VALUES ($1, $2, 'active')
+             RETURNING *`,
+            [agentId, to]
+          );
+        } else {
+          throw error;
+        }
+      }
 
       const conversation = conversationResult.rows[0];
 
@@ -159,20 +175,84 @@ class TelephonyService {
       // Get conversation history
       const history = conversation.transcript || [];
       
+      // Validate AI service is configured
+      const provider = nluConfig.provider || agent.voice_model || 'openai';
+      const isConfigured = aiService.isConfigured(provider);
+      
+      if (!isConfigured) {
+        throw new Error(`AI service (${provider}) is not configured. Please set ${provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'} in environment variables.`);
+      }
+
       // Get AI response
-      const aiResponse = await aiService.processConversation({
-        agentId: agentId,
-        agentConfig: {
-          provider: nluConfig.provider || agent.voice_model || 'openai',
-          model: nluConfig.model || 'gpt-4',
-          system_prompt: nluConfig.system_prompt || agent.system_prompt,
-          temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
-          max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
-          type: agent.type
-        },
-        conversationHistory: history,
-        userMessage: userInput || ''
-      });
+      let aiResponse;
+      try {
+        aiResponse = await aiService.processConversation({
+          agentId: agentId,
+          agentConfig: {
+            provider: provider,
+            model: nluConfig.model || (provider === 'openai' ? 'gpt-4' : 'claude-3-opus-20240229'),
+            system_prompt: nluConfig.system_prompt || agent.system_prompt,
+            temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
+            max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
+            type: agent.type
+          },
+          conversationHistory: history,
+          userMessage: userInput || ''
+        });
+      } catch (aiError) {
+        console.error('Error getting AI response:', aiError);
+        throw new Error(`Failed to get AI response: ${aiError.message}`);
+      }
+
+      if (!aiResponse) {
+        throw new Error('AI service returned invalid response');
+      }
+
+      // Handle function calls (especially forward_call for emergency)
+      if (aiResponse.functionCall && aiResponse.functionCall.name === 'forward_call') {
+        const emergencyForwardingService = require('./emergencyForwardingService');
+        const args = typeof aiResponse.functionCall.arguments === 'string' 
+          ? JSON.parse(aiResponse.functionCall.arguments) 
+          : aiResponse.functionCall.arguments;
+        
+        // Get call log ID
+        const callLogResult = await db.query(
+          'SELECT id, organization_id FROM call_logs WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [conversationId]
+        );
+        
+        if (callLogResult.rows.length > 0) {
+          const callLogId = callLogResult.rows[0].id;
+          const orgId = callLogResult.rows[0].organization_id;
+          
+          try {
+            const forwardResult = await emergencyForwardingService.forwardCall(
+              conversationId,
+              callLogId,
+              args.reason || 'User requested human agent',
+              orgId
+            );
+            
+            // Return TwiML that says we're transferring and then transfers
+            const twiml = new twilio.twiml.VoiceResponse();
+            twiml.say({
+              voice: 'alice',
+              language: 'en-US'
+            }, 'I understand you need to speak with someone immediately. Please hold while I transfer your call.');
+            
+            // The actual transfer happens in the forwardCall method via callControlService
+            // But we need to return TwiML that continues the call
+            return twiml.toString();
+          } catch (forwardError) {
+            console.error('Error forwarding call:', forwardError);
+            // Continue with normal response if forwarding fails
+          }
+        }
+      }
+
+      if (!aiResponse.content) {
+        throw new Error('AI service returned invalid response');
+      }
 
       // Update conversation transcript
       const updatedHistory = [...history, {

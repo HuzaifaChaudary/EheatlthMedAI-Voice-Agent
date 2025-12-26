@@ -22,6 +22,8 @@ interface Agent {
   system_prompt: string
   temperature: number
   phone_number_id: number | null
+  calendar_integration_id: number | null
+  escalation_rules: any
   updated_at: string
 }
 
@@ -84,8 +86,11 @@ export default function AgentConfigurationPage() {
   const [isActive, setIsActive] = useState(false)
   const [voiceModel, setVoiceModel] = useState('openai')
   const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState<string | number>('')
+  const [selectedCalendarIntegrationId, setSelectedCalendarIntegrationId] = useState<string | number>('')
   const [selectedCalendarProvider, setSelectedCalendarProvider] = useState('off')
   const [selectedEhrProvider, setSelectedEhrProvider] = useState('off')
+  const [calendarIntegrations, setCalendarIntegrations] = useState<Integration[]>([])
+  const [emergencyContact, setEmergencyContact] = useState('')
 
   useEffect(() => {
     fetchAgent()
@@ -117,6 +122,10 @@ export default function AgentConfigurationPage() {
         setIsActive(data.is_active)
         setVoiceModel(data.voice_model || 'openai')
         setSelectedPhoneNumberId(data.phone_number_id || '')
+        setSelectedCalendarIntegrationId(data.calendar_integration_id || '')
+        // Load emergency contact from escalation_rules
+        const escalationRules = data.escalation_rules || {}
+        setEmergencyContact(escalationRules.emergency_contact || escalationRules.forward_to || '')
       } else {
         setError('Agent not found')
       }
@@ -130,9 +139,14 @@ export default function AgentConfigurationPage() {
   const fetchIntegrations = async () => {
     try {
       setIntegrationsLoading(true)
-      const response = await get('/integrations/test/list')
+      const response = await get('/integrations')
       if (response.data?.integrations) {
         setIntegrations(response.data.integrations)
+        // Filter calendar integrations
+        const calendars = response.data.integrations.filter((i: Integration) => 
+          i.type === 'scheduling' && i.is_active
+        )
+        setCalendarIntegrations(calendars)
         
         // Set selected providers based on active integrations
         const schedulingInt = response.data.integrations.find((i: Integration) => 
@@ -185,11 +199,20 @@ export default function AgentConfigurationPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // Build escalation_rules with emergency contact
+      const escalationRules: any = {}
+      if (emergencyContact.trim()) {
+        escalationRules.emergency_contact = emergencyContact.trim()
+        escalationRules.forward_to = emergencyContact.trim() // For backwards compatibility
+      }
+
       const response = await put(`/agents/${params.agentId}`, {
         system_prompt: prompt,
         is_active: isActive,
         voice_model: voiceModel,
-        phone_number_id: selectedPhoneNumberId || null
+        phone_number_id: selectedPhoneNumberId || null,
+        calendar_integration_id: selectedCalendarIntegrationId || null,
+        escalation_rules: Object.keys(escalationRules).length > 0 ? escalationRules : null
       })
 
       if (response.error) {
@@ -406,6 +429,14 @@ export default function AgentConfigurationPage() {
                             </div>
                           )}
                         </div>
+                        {!hasAnyEhr && (
+                          <Link 
+                            href="/architecture/ehr"
+                            className="text-xs text-teal-400 hover:text-teal-300 mt-2 block"
+                          >
+                            Configure EMR/EHR →
+                          </Link>
+                        )}
                       </div>
                     )
                   })()}
@@ -437,7 +468,7 @@ export default function AgentConfigurationPage() {
                           }
                         </p>
                         <Link 
-                          href="/dashboard?tab=integrations"
+                          href="/dashboard/integrations"
                           className="text-xs text-teal-400 hover:text-teal-300"
                         >
                           {crmIntegrations.length > 0 ? 'Manage CRM →' : 'Configure CRM →'}
@@ -462,7 +493,8 @@ export default function AgentConfigurationPage() {
                        voiceModel === 'elevenlabs' ? 'ElevenLabs TTS' :
                        voiceModel === 'deepgram' ? 'Deepgram STT' : voiceModel}
                     </p>
-                    <div className="text-xs text-green-400">
+                    <p className="text-xs text-slate-400 mb-3">(You can Configure Voice AI in Top Right Corner of the screen Voice Configuration)</p>
+                    <div className="text-xs text-green-400 mb-3">
                       ✓ NLU + TTS configured
                     </div>
                   </div>
@@ -475,7 +507,7 @@ export default function AgentConfigurationPage() {
           <div className="space-y-6">
             {/* Model Settings */}
             <Card>
-              <div className="p-6">
+              <div className="p-6" id="voice-configuration">
                 <h3 className="text-lg font-semibold flex items-center mb-6">
                   <Settings className="mr-2 text-slate-400" size={20} />
                   Voice Configuration
@@ -490,7 +522,6 @@ export default function AgentConfigurationPage() {
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
                     >
                       <option value="openai">OpenAI (Realtime)</option>
-                      <option value="elliza">Elliza.ai</option>
                       <option value="deepgram">Deepgram</option>
                       <option value="elevenlabs">ElevenLabs</option>
                     </select>
@@ -527,6 +558,56 @@ export default function AgentConfigurationPage() {
                         Add phone number →
                       </Link>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2 flex items-center">
+                      <Calendar className="mr-2 text-teal-400" size={16} />
+                      Calendar Integration
+                    </label>
+                    <select
+                      value={selectedCalendarIntegrationId}
+                      onChange={(e) => setSelectedCalendarIntegrationId(e.target.value || '')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
+                    >
+                      <option value="">No calendar (use organization default)</option>
+                      {integrationsLoading ? (
+                        <option disabled>Loading calendars...</option>
+                      ) : calendarIntegrations.length === 0 ? (
+                        <option disabled>No calendar integrations available. Add one in Integrations page.</option>
+                      ) : (
+                        calendarIntegrations.map((cal) => (
+                          <option key={cal.id} value={cal.id}>
+                            {cal.name} ({cal.provider.replace('_', ' ')})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-2">
+                      Appointments booked by this agent will sync to the selected calendar. Each agent can have its own calendar.
+                    </p>
+                    {calendarIntegrations.length === 0 && (
+                      <Link href="/dashboard/integrations" className="text-xs text-teal-400 hover:text-teal-300 mt-1 block">
+                        Add calendar integration →
+                      </Link>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2 flex items-center">
+                      <Phone className="mr-2 text-red-400" size={16} />
+                      Emergency Contact Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={emergencyContact}
+                      onChange={(e) => setEmergencyContact(e.target.value)}
+                      placeholder="+1234567890"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
+                    />
+                    <p className="text-xs text-slate-400 mt-2">
+                      When the AI detects an emergency or user requests human assistance, calls will be forwarded to this number. Use E.164 format (e.g., +1234567890).
+                    </p>
                   </div>
 
                   <div>

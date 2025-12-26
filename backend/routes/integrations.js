@@ -60,6 +60,61 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
+// Delete integration
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    console.log('🗑️ DELETE /api/integrations/:id called');
+    console.log('   User ID:', req.user.id);
+    console.log('   User Role:', req.user.role);
+    console.log('   Integration ID:', req.params.id);
+
+    if (req.user.role !== 'admin') {
+      console.log('   ❌ Access denied: Not admin');
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+
+    const orgId = orgResult.rows[0]?.organization_id;
+    console.log('   Organization ID:', orgId);
+
+    // Check if integration exists and belongs to organization
+    let checkQuery;
+    if (orgId) {
+      checkQuery = await db.query(
+        'SELECT id, name FROM integrations WHERE id = $1 AND organization_id = $2',
+        [id, orgId]
+      );
+    } else {
+      checkQuery = await db.query(
+        'SELECT id, name FROM integrations WHERE id = $1',
+        [id]
+      );
+    }
+
+    if (checkQuery.rows.length === 0) {
+      console.log('   ❌ Integration not found');
+      return res.status(404).json({ message: 'Integration not found' });
+    }
+
+    console.log('   ✅ Integration found:', checkQuery.rows[0].name);
+
+    // Delete the integration
+    await db.query('DELETE FROM integrations WHERE id = $1', [id]);
+    console.log('   ✅ Integration deleted successfully');
+
+    res.json({ message: 'Integration deleted successfully' });
+  } catch (error) {
+    console.error('❌ Error deleting integration:', error);
+    console.error('   Error stack:', error.stack);
+    res.status(500).json({ message: 'Error deleting integration', error: error.message });
+  }
+});
+
 // Update integration
 router.put('/:id', authenticateToken, async (req, res) => {
   try {

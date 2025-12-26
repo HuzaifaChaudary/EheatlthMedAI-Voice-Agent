@@ -88,7 +88,6 @@ export async function apiRequest<T = any>(
     const authHeader = getAuthHeader()
     if (authHeader) {
       baseHeaders['Authorization'] = authHeader
-      console.log('🔐 Auth header added:', authHeader.substring(0, 20) + '...')
     } else {
       console.warn('⚠️ No auth token found for authenticated request to:', endpoint)
     }
