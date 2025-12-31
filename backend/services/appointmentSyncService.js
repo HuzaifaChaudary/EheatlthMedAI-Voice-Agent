@@ -405,6 +405,18 @@ class AppointmentSyncService {
 
       if (connectorType === 'fhir') {
         // Sync via FHIR
+        // Build connector object from separate columns
+        const fhirConnector = ehrSystem.fhir_connector_id ? {
+          id: ehrSystem.fhir_connector_id,
+          base_url: ehrSystem.fhir_base_url,
+          name: ehrSystem.fhir_name,
+          credentials: ehrSystem.fhir_credentials
+        } : null;
+        
+        if (!fhirConnector) {
+          throw new Error('FHIR connector not found');
+        }
+        
         const appointmentResource = fhirService.createAppointmentResource({
           appointmentId: appointment.id.toString(),
           patientId: appointment.patient_phone, // Use phone as patient identifier
