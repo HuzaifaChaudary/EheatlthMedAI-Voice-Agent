@@ -144,10 +144,11 @@ async function fixPhoneNumber() {
     const webhookUrl = `${baseUrl}/api/telephony/twilio/inbound`;
     
     try {
+      const statusCallbackUrl = `${baseUrl}/api/telephony/twilio/status`;
       const twilioNumber = await client.incomingPhoneNumbers(phoneNumber.provider_sid).update({
         voiceUrl: webhookUrl,
         voiceMethod: 'POST',
-        statusCallback: `${API_URL}/api/telephony/twilio/status`,
+        statusCallback: statusCallbackUrl,
         statusCallbackMethod: 'POST'
       });
       
