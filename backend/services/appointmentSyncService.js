@@ -435,6 +435,7 @@ class AppointmentSyncService {
         
         if (!hl7Connector) {
           throw new Error('HL7 connector not found');
+        }
         
         const hl7Message = hl7Service.generateADTMessage({
           patientName: { first: appointment.patient_name?.split(' ')[0] || '', last: appointment.patient_name?.split(' ').slice(1).join(' ') || '' },
