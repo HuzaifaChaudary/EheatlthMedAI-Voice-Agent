@@ -383,10 +383,11 @@ class AppointmentSyncService {
     try {
       // Get EHR system configuration
       // Fixed: Use separate columns instead of CASE/WHEN with incompatible types
+      // Note: hl7_connectors uses endpoint_url, not host/port/facility
       const ehrResult = await db.query(
         `SELECT e.*, 
-                h.id as hl7_connector_id, h.host as hl7_host, h.port as hl7_port, h.facility as hl7_facility,
-                f.id as fhir_connector_id, f.base_url as fhir_base_url, f.client_id as fhir_client_id
+                h.id as hl7_connector_id, h.endpoint_url as hl7_endpoint_url, h.name as hl7_name, h.credentials as hl7_credentials,
+                f.id as fhir_connector_id, f.base_url as fhir_base_url, f.name as fhir_name, f.credentials as fhir_credentials
          FROM ehr_systems e
          LEFT JOIN hl7_connectors h ON e.connector_id = h.id AND e.connector_type = 'hl7'
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
@@ -427,14 +428,13 @@ class AppointmentSyncService {
         // Build connector object from separate columns
         const hl7Connector = ehrSystem.hl7_connector_id ? {
           id: ehrSystem.hl7_connector_id,
-          host: ehrSystem.hl7_host,
-          port: ehrSystem.hl7_port,
-          facility: ehrSystem.hl7_facility
+          endpoint_url: ehrSystem.hl7_endpoint_url,
+          name: ehrSystem.hl7_name,
+          credentials: ehrSystem.hl7_credentials
         } : null;
         
         if (!hl7Connector) {
           throw new Error('HL7 connector not found');
-        }
         
         const hl7Message = hl7Service.generateADTMessage({
           patientName: { first: appointment.patient_name?.split(' ')[0] || '', last: appointment.patient_name?.split(' ').slice(1).join(' ') || '' },
