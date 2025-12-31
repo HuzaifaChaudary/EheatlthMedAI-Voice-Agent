@@ -74,45 +74,24 @@ async function testAgentVoiceCall(agent) {
     const orgResult = await pool.query('SELECT id FROM organizations LIMIT 1');
     const organizationId = orgResult.rows[0]?.id;
     
-    // Create conversation via webchat endpoint (proper way)
+    // Create conversation directly in database (more reliable)
     let conversationId;
     try {
-      const convResponse = await axios.post(
-        `${BASE_URL}/webchat/conversation`,
-        {
-          agent_id: agent.id,
-          organization_id: organizationId,
-          patient_name: `Test Patient ${agent.name}`
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${AUTH_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      const convResult = await pool.query(
+        `INSERT INTO conversations (organization_id, agent_id, patient_name, patient_phone, status)
+         VALUES ($1, $2, $3, $4, 'active')
+         RETURNING id`,
+        [organizationId, agent.id, `Test Patient ${agent.name}`, '+17703434007']
       );
-      conversationId = convResponse.data.conversation_id || convResponse.data.conversation?.id;
-      log(`✅ Conversation created via webchat: ${conversationId}`, 'green');
-    } catch (webchatError) {
-      log(`⚠️  Webchat endpoint failed: ${webchatError.response?.data?.message || webchatError.message}`, 'yellow');
-      // Fallback: create directly in database
-      try {
-        const convResult = await pool.query(
-          `INSERT INTO conversations (organization_id, agent_id, patient_name, patient_phone, status)
-           VALUES ($1, $2, $3, $4, 'active')
-           RETURNING id`,
-          [organizationId, agent.id, `Test Patient ${agent.name}`, '+17703434007']
-        );
-        conversationId = convResult.rows[0].id;
-        log(`✅ Conversation created in database: ${conversationId}`, 'green');
-      } catch (dbError) {
-        log(`❌ Error creating conversation: ${dbError.message}`, 'red');
-        return {
-          agent: agent.name,
-          type: agent.type,
-          error: `Failed to create conversation: ${dbError.message}`
-        };
-      }
+      conversationId = convResult.rows[0].id;
+      log(`✅ Conversation created in database: ${conversationId}`, 'green');
+    } catch (dbError) {
+      log(`❌ Error creating conversation: ${dbError.message}`, 'red');
+      return {
+        agent: agent.name,
+        type: agent.type,
+        error: `Failed to create conversation: ${dbError.message}`
+      };
     }
     
     if (!conversationId) {
@@ -130,6 +109,21 @@ async function testAgentVoiceCall(agent) {
     );
     const phoneNumberId = phoneResult.rows[0]?.id;
     
+    // Verify conversation exists before creating call log
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE id = $1',
+      [conversationId]
+    );
+    
+    if (convCheck.rows.length === 0) {
+      log(`❌ Conversation ${conversationId} not found in database`, 'red');
+      return {
+        agent: agent.name,
+        type: agent.type,
+        error: 'Conversation not found'
+      };
+    }
+    
     // Create call log
     const callLogResult = await pool.query(
       `INSERT INTO call_logs (
@@ -141,6 +135,7 @@ async function testAgentVoiceCall(agent) {
     );
     
     const callLogId = callLogResult.rows[0].id;
+    log(`✅ Call log created: ${callLogId}`, 'green');
     
     // Make call
     log(`\n📞 Making call to auto-answer number...`, 'cyan');
@@ -283,27 +278,32 @@ async function main() {
     log('⚠️  Could not run update script, continuing...', 'yellow');
   }
   
-  // Get all agents
-  log('\n📋 Step 2: Fetching all agents...', 'cyan');
-  const agents = await getAllAgents();
+  // Get all agents from database (not API, to ensure they exist)
+  log('\n📋 Step 2: Fetching agents from database...', 'cyan');
+  const dbAgentsResult = await pool.query(
+    'SELECT id, name, type, calendar_integration_id, is_active FROM ai_agents WHERE is_active = true ORDER BY type'
+  );
   
-  if (agents.length === 0) {
-    log('❌ No agents found', 'red');
+  const dbAgents = dbAgentsResult.rows;
+  
+  if (dbAgents.length === 0) {
+    log('❌ No active agents found in database', 'red');
     return;
   }
   
-  log(`✅ Found ${agents.length} agent(s)`, 'green');
+  log(`✅ Found ${dbAgents.length} active agent(s) in database:`, 'green');
+  dbAgents.forEach(agent => {
+    log(`   - ${agent.name} (${agent.type}) - ID: ${agent.id}`, 'blue');
+  });
   
   // Test each agent
   log('\n📋 Step 3: Testing each agent...', 'cyan');
   const results = [];
   
-  for (const agent of agents) {
-    if (agent.is_active) {
-      const result = await testAgentVoiceCall(agent);
-      results.push(result);
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between tests
-    }
+  for (const agent of dbAgents) {
+    const result = await testAgentVoiceCall(agent);
+    results.push(result);
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between tests
   }
   
   // Summary
