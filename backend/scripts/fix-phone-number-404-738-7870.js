@@ -139,7 +139,9 @@ async function fixPhoneNumber() {
     
     // Step 6: Configure Twilio webhook
     log('\n📋 Step 5: Configuring Twilio webhook...', 'cyan');
-    const webhookUrl = `${API_URL}/api/telephony/twilio/inbound`;
+    // Remove trailing /api if present to avoid double /api/api/
+    const baseUrl = API_URL.replace(/\/api$/, '');
+    const webhookUrl = `${baseUrl}/api/telephony/twilio/inbound`;
     
     try {
       const twilioNumber = await client.incomingPhoneNumbers(phoneNumber.provider_sid).update({
