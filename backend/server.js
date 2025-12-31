@@ -165,6 +165,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/telephony', require('./routes/telephony'));
+app.use('/api/test-telephony', require('./routes/test-telephony'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/hipaa', sensitiveOperationLimiter, require('./routes/hipaa'));

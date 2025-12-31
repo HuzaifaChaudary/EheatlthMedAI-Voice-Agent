@@ -141,6 +141,8 @@ class TelephonyService {
    */
   async generateVoiceResponse({ conversationId, agentId, userInput }) {
     try {
+      console.log('🎤 generateVoiceResponse called:', { conversationId, agentId, userInput: userInput ? 'provided' : 'null' });
+      
       // Get conversation and agent
       const conversationResult = await db.query(
         'SELECT * FROM conversations WHERE id = $1',
@@ -148,10 +150,12 @@ class TelephonyService {
       );
 
       if (conversationResult.rows.length === 0) {
-        throw new Error('Conversation not found');
+        console.error('❌ Conversation not found:', conversationId);
+        throw new Error(`Conversation not found: ${conversationId}`);
       }
 
       const conversation = conversationResult.rows[0];
+      console.log('✅ Conversation found:', { id: conversation.id, status: conversation.status });
 
       const agentResult = await db.query(
         'SELECT * FROM ai_agents WHERE id = $1',
@@ -159,10 +163,12 @@ class TelephonyService {
       );
 
       if (agentResult.rows.length === 0) {
-        throw new Error('Agent not found');
+        console.error('❌ Agent not found:', agentId);
+        throw new Error(`Agent not found: ${agentId}`);
       }
 
       const agent = agentResult.rows[0];
+      console.log('✅ Agent found:', { id: agent.id, name: agent.name, type: agent.type, is_active: agent.is_active });
 
       // Get NLU configuration
       const nluResult = await db.query(
@@ -171,41 +177,64 @@ class TelephonyService {
       );
 
       const nluConfig = nluResult.rows[0] || {};
+      console.log('📋 NLU config:', { hasConfig: !!nluResult.rows[0], provider: nluConfig.provider || 'none' });
 
       // Get conversation history
       const history = conversation.transcript || [];
+      console.log('📜 Conversation history length:', history.length);
       
       // Validate AI service is configured
       const provider = nluConfig.provider || agent.voice_model || 'openai';
       const isConfigured = aiService.isConfigured(provider);
       
+      console.log('🔧 AI Service check:', { provider, isConfigured, hasOpenAI: !!process.env.OPENAI_API_KEY, hasAnthropic: !!process.env.ANTHROPIC_API_KEY });
+      
       if (!isConfigured) {
-        throw new Error(`AI service (${provider}) is not configured. Please set ${provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'} in environment variables.`);
+        const errorMsg = `AI service (${provider}) is not configured. Please set ${provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'} in environment variables.`;
+        console.error('❌', errorMsg);
+        throw new Error(errorMsg);
       }
 
       // Get AI response
       let aiResponse;
       try {
+        console.log('🤖 Calling AI service...');
+        const agentConfig = {
+          provider: provider,
+          model: nluConfig.model || (provider === 'openai' ? 'gpt-4' : 'claude-3-opus-20240229'),
+          system_prompt: nluConfig.system_prompt || agent.system_prompt,
+          temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
+          max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
+          type: agent.type
+        };
+        console.log('🤖 Agent config:', { provider: agentConfig.provider, model: agentConfig.model, hasSystemPrompt: !!agentConfig.system_prompt });
+        
         aiResponse = await aiService.processConversation({
           agentId: agentId,
-          agentConfig: {
-            provider: provider,
-            model: nluConfig.model || (provider === 'openai' ? 'gpt-4' : 'claude-3-opus-20240229'),
-            system_prompt: nluConfig.system_prompt || agent.system_prompt,
-            temperature: parseFloat(nluConfig.temperature || agent.temperature || 0.7),
-            max_tokens: parseInt(nluConfig.max_tokens || agent.max_tokens || 1000),
-            type: agent.type
-          },
+          agentConfig: agentConfig,
           conversationHistory: history,
           userMessage: userInput || ''
         });
+        
+        console.log('✅ AI response received:', { hasContent: !!aiResponse?.content, hasFunctionCall: !!aiResponse?.functionCall });
       } catch (aiError) {
-        console.error('Error getting AI response:', aiError);
+        console.error('❌ Error getting AI response:', {
+          message: aiError.message,
+          stack: aiError.stack,
+          agentId: agentId,
+          provider: provider
+        });
         throw new Error(`Failed to get AI response: ${aiError.message}`);
       }
 
       if (!aiResponse) {
+        console.error('❌ AI service returned null/undefined response');
         throw new Error('AI service returned invalid response');
+      }
+      
+      if (!aiResponse.content && !aiResponse.functionCall) {
+        console.error('❌ AI response missing both content and functionCall');
+        throw new Error('AI service returned response without content or function call');
       }
 
       // Handle function calls (especially forward_call for emergency)
@@ -320,14 +349,21 @@ class TelephonyService {
         transcribeCallback: `${this.baseUrl}/api/telephony/twilio/transcription`
       });
 
+      console.log('✅ TwiML generated successfully');
       return twiml.toString();
     } catch (error) {
-      console.error('Error generating voice response:', error);
+      console.error('❌ Error generating voice response:', {
+        message: error.message,
+        stack: error.stack,
+        conversationId: conversationId,
+        agentId: agentId
+      });
+      
       const twiml = new twilio.twiml.VoiceResponse();
       twiml.say({
         voice: 'alice',
         language: 'en-US'
-      }, 'I apologize, but I encountered an error. Please try again later.');
+      }, 'I apologize, but I encountered an error. Please try again later or contact support.');
       twiml.hangup();
       return twiml.toString();
     }

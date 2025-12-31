@@ -207,6 +207,14 @@ class AppointmentSyncService {
 
       const result = await response.json();
 
+      console.log('📅 GOOGLE CALENDAR SYNC SUCCESS:', {
+        appointment_id: appointment.id,
+        event_id: result.id,
+        html_link: result.htmlLink,
+        summary: result.summary,
+        start: result.start?.dateTime
+      });
+
       return {
         success: true,
         provider: 'google_calendar',

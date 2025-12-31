@@ -5,6 +5,7 @@ const telephonyService = require('../services/telephonyService');
 const smsService = require('../services/smsService');
 const callControlService = require('../services/callControlService');
 const voicemailService = require('../services/voicemailService');
+const { normalizePhoneNumber, phoneNumbersMatch } = require('../utils/phoneUtils');
 const router = express.Router();
 
 // Test endpoint to verify routing works
@@ -162,6 +163,10 @@ router.post('/phone-numbers/purchase', authenticateToken, async (req, res) => {
       statusCallbackMethod: 'POST'
     });
 
+    // Normalize phone number to E.164 format before saving
+    const normalizedPhoneNumber = normalizePhoneNumber(purchasedNumber.phoneNumber);
+    console.log('📞 Normalizing purchased phone number:', { original: purchasedNumber.phoneNumber, normalized: normalizedPhoneNumber });
+
     // Save to database
     const result = await db.query(
       `INSERT INTO phone_numbers (organization_id, phone_number, provider, provider_sid, capabilities, monthly_cost, is_active)
@@ -169,7 +174,7 @@ router.post('/phone-numbers/purchase', authenticateToken, async (req, res) => {
        RETURNING *`,
       [
         orgId,
-        purchasedNumber.phoneNumber,
+        normalizedPhoneNumber,
         'twilio',
         purchasedNumber.sid,
         JSON.stringify(capabilities || purchasedNumber.capabilities || { voice: true, sms: true }),
@@ -209,11 +214,15 @@ router.post('/phone-numbers', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Phone number is required' });
     }
 
+    // Normalize phone number to E.164 format before saving
+    const normalizedPhoneNumber = normalizePhoneNumber(phone_number);
+    console.log('📞 Normalizing phone number:', { original: phone_number, normalized: normalizedPhoneNumber });
+
     const result = await db.query(
       `INSERT INTO phone_numbers (organization_id, phone_number, provider, provider_sid, capabilities, monthly_cost, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [orgId, phone_number, provider || 'twilio', provider_sid, JSON.stringify(capabilities || { voice: true, sms: true }), monthly_cost || null, true]
+      [orgId, normalizedPhoneNumber, provider || 'twilio', provider_sid, JSON.stringify(capabilities || { voice: true, sms: true }), monthly_cost || null, true]
     );
 
     res.status(201).json({ 
@@ -394,13 +403,31 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
   try {
     const { From, To, CallSid } = req.body;
 
-    // Find phone number and organization
-    const phoneResult = await db.query(
-      'SELECT * FROM phone_numbers WHERE phone_number = $1',
-      [To]
+    console.log('📞 Incoming call received:', { From, To, CallSid });
+
+    // Normalize the incoming phone number from Twilio
+    const normalizedTo = normalizePhoneNumber(To);
+    console.log('📞 Normalized To:', normalizedTo);
+
+    // Find phone number and organization - try exact match first, then normalized match
+    let phoneResult = await db.query(
+      'SELECT * FROM phone_numbers WHERE phone_number = $1 OR phone_number = $2',
+      [To, normalizedTo]
     );
 
+    // If still not found, try matching with normalization on all phone numbers
     if (phoneResult.rows.length === 0) {
+      const allPhonesResult = await db.query('SELECT * FROM phone_numbers WHERE is_active = true');
+      for (const phone of allPhonesResult.rows) {
+        if (phoneNumbersMatch(phone.phone_number, To) || phoneNumbersMatch(phone.phone_number, normalizedTo)) {
+          phoneResult = { rows: [phone] };
+          break;
+        }
+      }
+    }
+
+    if (phoneResult.rows.length === 0) {
+      console.error('❌ Phone number not found in database:', { To, normalizedTo });
       const twilio = require('twilio');
       const response = new twilio.twiml.VoiceResponse();
       response.say('Sorry, this number is not configured. Goodbye.');
@@ -411,13 +438,26 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
     const phoneNumber = phoneResult.rows[0];
     const organizationId = phoneNumber.organization_id;
 
+    console.log('📞 Phone number found:', { id: phoneNumber.id, phone_number: phoneNumber.phone_number, organization_id: organizationId });
+
     // Get default agent for this phone number
     const agentResult = await db.query(
       'SELECT * FROM ai_agents WHERE phone_number_id = $1 AND organization_id = $2 AND is_active = true LIMIT 1',
       [phoneNumber.id, organizationId]
     );
 
+    console.log('📞 Agent lookup:', { phone_number_id: phoneNumber.id, organization_id: organizationId, agent_count: agentResult.rows.length });
+
     if (agentResult.rows.length === 0) {
+      console.error('❌ No agent found for phone number:', { phone_number_id: phoneNumber.id, organization_id: organizationId });
+      
+      // Log all agents for debugging
+      const allAgentsResult = await db.query(
+        'SELECT id, name, phone_number_id, organization_id, is_active FROM ai_agents WHERE organization_id = $1',
+        [organizationId]
+      );
+      console.log('📞 All agents in organization:', allAgentsResult.rows);
+      
       const twilio = require('twilio');
       const response = new twilio.twiml.VoiceResponse();
       response.say('Sorry, no agent is configured for this number. Goodbye.');
@@ -426,6 +466,7 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
     }
 
     const agent = agentResult.rows[0];
+    console.log('✅ Agent found:', { id: agent.id, name: agent.name, type: agent.type });
 
     // Create conversation
     // Try with organization_id first, fallback if column doesn't exist
@@ -484,6 +525,8 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
 
     // Generate initial greeting
     try {
+      console.log('🎤 Generating voice response...', { conversationId: conversation.id, agentId: agent.id });
+      
       const twiml = await telephonyService.generateVoiceResponse({
         conversationId: conversation.id,
         agentId: agent.id,
@@ -494,10 +537,18 @@ router.post('/twilio/inbound', express.urlencoded({ extended: true }), async (re
         throw new Error('Invalid TwiML response from generateVoiceResponse');
       }
 
+      console.log('✅ Voice response generated successfully');
       return res.type('text/xml').send(twiml);
     } catch (voiceError) {
-      console.error('Error generating voice response for inbound call:', voiceError);
-      console.error('Agent ID:', agent.id, 'Conversation ID:', conversation.id);
+      console.error('❌ Error generating voice response for inbound call:', voiceError);
+      console.error('Error details:', {
+        message: voiceError.message,
+        stack: voiceError.stack,
+        agentId: agent.id,
+        conversationId: conversation.id,
+        agentName: agent.name,
+        agentType: agent.type
+      });
       
       // Update call log with error
       try {

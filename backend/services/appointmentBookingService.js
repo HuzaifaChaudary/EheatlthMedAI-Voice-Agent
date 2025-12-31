@@ -303,6 +303,13 @@ class AppointmentBookingService {
 
           const appointment = await this.bookAppointment(conversationId, appointmentData, organizationId);
 
+          console.log('📅 APPOINTMENT BOOKED:', {
+            appointment_id: appointment.id,
+            patient_name: appointmentData.patient_name,
+            appointment_date: appointmentData.appointment_date,
+            organization_id: organizationId
+          });
+
           return {
             success: true,
             message: `Appointment successfully booked for ${appointmentData.patient_name} on ${new Date(appointmentData.appointment_date).toLocaleDateString('en-US', {
@@ -312,7 +319,7 @@ class AppointmentBookingService {
               day: 'numeric',
               hour: 'numeric',
               minute: '2-digit'
-            })}.`,
+            })}. The appointment has been added to your calendar.`,
             appointment_id: appointment.id,
             appointment: appointment
           };
