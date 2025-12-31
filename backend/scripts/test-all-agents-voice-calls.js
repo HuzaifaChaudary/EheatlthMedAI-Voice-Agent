@@ -52,6 +52,24 @@ async function testAgentVoiceCall(agent) {
   log(`${'='.repeat(60)}`, 'cyan');
   
   try {
+    // Verify agent exists in database
+    const agentCheck = await pool.query(
+      'SELECT id, name, type, calendar_integration_id FROM ai_agents WHERE id = $1',
+      [agent.id]
+    );
+    
+    if (agentCheck.rows.length === 0) {
+      log(`⚠️  Agent ID ${agent.id} not found in database, skipping...`, 'yellow');
+      return {
+        agent: agent.name,
+        type: agent.type,
+        error: 'Agent not found in database'
+      };
+    }
+    
+    const dbAgent = agentCheck.rows[0];
+    log(`✅ Agent verified in database: ${dbAgent.name}`, 'green');
+    
     // Get organization
     const orgResult = await pool.query('SELECT id FROM organizations LIMIT 1');
     const organizationId = orgResult.rows[0]?.id;
@@ -73,9 +91,10 @@ async function testAgentVoiceCall(agent) {
           }
         }
       );
-      conversationId = convResponse.data.conversation_id;
+      conversationId = convResponse.data.conversation_id || convResponse.data.conversation?.id;
       log(`✅ Conversation created via webchat: ${conversationId}`, 'green');
     } catch (webchatError) {
+      log(`⚠️  Webchat endpoint failed: ${webchatError.response?.data?.message || webchatError.message}`, 'yellow');
       // Fallback: create directly in database
       try {
         const convResult = await pool.query(
@@ -94,6 +113,15 @@ async function testAgentVoiceCall(agent) {
           error: `Failed to create conversation: ${dbError.message}`
         };
       }
+    }
+    
+    if (!conversationId) {
+      log(`❌ No conversation ID obtained`, 'red');
+      return {
+        agent: agent.name,
+        type: agent.type,
+        error: 'Failed to create conversation'
+      };
     }
     
     // Get phone number
