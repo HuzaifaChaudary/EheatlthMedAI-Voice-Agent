@@ -382,11 +382,11 @@ class AppointmentSyncService {
   async syncToEHR(appointment, integration, organizationId) {
     try {
       // Get EHR system configuration
+      // Fixed: Use separate columns instead of CASE/WHEN with incompatible types
       const ehrResult = await db.query(
         `SELECT e.*, 
-                CASE WHEN e.connector_type = 'hl7' THEN h.*
-                     WHEN e.connector_type = 'fhir' THEN f.*
-                END as connector
+                h.id as hl7_connector_id, h.host as hl7_host, h.port as hl7_port, h.facility as hl7_facility,
+                f.id as fhir_connector_id, f.base_url as fhir_base_url, f.client_id as fhir_client_id
          FROM ehr_systems e
          LEFT JOIN hl7_connectors h ON e.connector_id = h.id AND e.connector_type = 'hl7'
          LEFT JOIN fhir_connectors f ON e.connector_id = f.id AND e.connector_type = 'fhir'
@@ -415,7 +415,7 @@ class AppointmentSyncService {
           patientName: appointment.patient_name
         });
 
-        const result = await fhirService.createResource(ehrSystem.connector, 'Appointment', appointmentResource);
+        const result = await fhirService.createResource(fhirConnector, 'Appointment', appointmentResource);
         return {
           success: true,
           provider: 'ehr_fhir',
@@ -424,6 +424,18 @@ class AppointmentSyncService {
         };
       } else if (connectorType === 'hl7') {
         // Sync via HL7
+        // Build connector object from separate columns
+        const hl7Connector = ehrSystem.hl7_connector_id ? {
+          id: ehrSystem.hl7_connector_id,
+          host: ehrSystem.hl7_host,
+          port: ehrSystem.hl7_port,
+          facility: ehrSystem.hl7_facility
+        } : null;
+        
+        if (!hl7Connector) {
+          throw new Error('HL7 connector not found');
+        }
+        
         const hl7Message = hl7Service.generateADTMessage({
           patientName: { first: appointment.patient_name?.split(' ')[0] || '', last: appointment.patient_name?.split(' ').slice(1).join(' ') || '' },
           patientId: appointment.patient_phone,
@@ -433,7 +445,7 @@ class AppointmentSyncService {
           receivingFacility: ehrSystem.name
         });
 
-        const result = await hl7Service.sendMessage(hl7Message, ehrSystem.connector);
+        const result = await hl7Service.sendMessage(hl7Message, hl7Connector);
         return {
           success: true,
           provider: 'ehr_hl7',
