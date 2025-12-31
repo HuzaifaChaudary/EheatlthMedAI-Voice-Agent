@@ -56,16 +56,45 @@ async function testAgentVoiceCall(agent) {
     const orgResult = await pool.query('SELECT id FROM organizations LIMIT 1');
     const organizationId = orgResult.rows[0]?.id;
     
-    // Create conversation
-    const convResult = await pool.query(
-      `INSERT INTO conversations (organization_id, agent_id, patient_name, patient_phone, status)
-       VALUES ($1, $2, $3, $4, 'active')
-       RETURNING id`,
-      [organizationId, agent.id, `Test Patient ${agent.name}`, '+17703434007']
-    );
-    
-    const conversationId = convResult.rows[0].id;
-    log(`✅ Conversation created: ${conversationId}`, 'green');
+    // Create conversation via webchat endpoint (proper way)
+    let conversationId;
+    try {
+      const convResponse = await axios.post(
+        `${BASE_URL}/webchat/conversation`,
+        {
+          agent_id: agent.id,
+          organization_id: organizationId,
+          patient_name: `Test Patient ${agent.name}`
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      conversationId = convResponse.data.conversation_id;
+      log(`✅ Conversation created via webchat: ${conversationId}`, 'green');
+    } catch (webchatError) {
+      // Fallback: create directly in database
+      try {
+        const convResult = await pool.query(
+          `INSERT INTO conversations (organization_id, agent_id, patient_name, patient_phone, status)
+           VALUES ($1, $2, $3, $4, 'active')
+           RETURNING id`,
+          [organizationId, agent.id, `Test Patient ${agent.name}`, '+17703434007']
+        );
+        conversationId = convResult.rows[0].id;
+        log(`✅ Conversation created in database: ${conversationId}`, 'green');
+      } catch (dbError) {
+        log(`❌ Error creating conversation: ${dbError.message}`, 'red');
+        return {
+          agent: agent.name,
+          type: agent.type,
+          error: `Failed to create conversation: ${dbError.message}`
+        };
+      }
+    }
     
     // Get phone number
     const phoneResult = await pool.query(
