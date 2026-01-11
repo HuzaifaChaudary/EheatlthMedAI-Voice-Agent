@@ -393,6 +393,15 @@ class AIService {
       });
     }
 
+    // OpenAI requires at least one user message - add a default for initial greeting
+    // This handles voice calls where the first interaction has no user input
+    if (messages.length === 0 || !messages.some(m => m.role === 'user')) {
+      messages.push({
+        role: 'user',
+        content: 'Hello, I am calling and need assistance.'
+      });
+    }
+
     return messages;
   }
 

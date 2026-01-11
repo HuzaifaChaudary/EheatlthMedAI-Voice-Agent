@@ -8,7 +8,13 @@ class TelephonyService {
     this.twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
     this.twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim();
     this.twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER?.trim();
-    this.baseUrl = process.env.API_URL || process.env.FRONTEND_URL || 'http://localhost:5000';
+    
+    // Get base URL and remove trailing /api if present to avoid double /api/api/ in webhook URLs
+    let baseUrl = process.env.API_URL || process.env.FRONTEND_URL || 'http://localhost:5000';
+    // Remove trailing /api or /api/ to use as webhook base
+    this.baseUrl = baseUrl.replace(/\/api\/?$/, '');
+    
+    console.log('📞 TelephonyService initialized with baseUrl:', this.baseUrl);
     
     if (this.twilioAccountSid && this.twilioAuthToken) {
       this.client = twilio(this.twilioAccountSid, this.twilioAuthToken);
