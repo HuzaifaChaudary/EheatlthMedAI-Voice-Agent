@@ -313,23 +313,14 @@ class TelephonyService {
         language_code: 'en-US'
       };
 
-      // For Twilio, use <Say> verb for now (can be enhanced with TTS audio URL)
+      // For Twilio, use <Say> verb for immediate text-to-speech
       const twiml = new twilio.twiml.VoiceResponse();
       
-      // Enable recording during the call (real-time)
-      twiml.record({
-        action: `${this.baseUrl}/api/telephony/twilio/recording-status`,
-        method: 'POST',
-        recordingStatusCallback: `${this.baseUrl}/api/telephony/twilio/recording-status`,
-        recordingStatusCallbackMethod: 'POST',
-        recordingStatusCallbackEvent: ['in-progress', 'completed'],
-        transcribe: true,
-        transcribeCallback: `${this.baseUrl}/api/telephony/twilio/transcription`,
-        transcribeCallbackMethod: 'POST'
-      });
+      // NOTE: Recording is handled at call initiation level, not here
+      // The <Record> verb was removed because it blocks the <Say> verb from executing
+      // Call recording should be enabled when making/receiving the call via Twilio API
       
-      // Use <Say> verb for immediate text-to-speech
-      // Note: For better quality, you can use <Play> with TTS audio URL
+      // Say the AI response first
       twiml.say({
         voice: 'alice',
         language: 'en-US'
