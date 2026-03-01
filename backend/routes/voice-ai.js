@@ -4,6 +4,194 @@ const { authenticateToken } = require('../middleware/auth');
 const ttsService = require('../services/ttsService');
 const router = express.Router();
 
+// ============================================================
+// Default system prompts for each agent type
+// These are shown in the prompt editor on the main page
+// ============================================================
+const defaultAgentPrompts = {
+  'front_desk': `You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately.
+
+Key responsibilities:
+- Schedule, reschedule, and cancel appointments
+- Answer questions about office hours, location, and services
+- Route urgent matters to appropriate staff
+- Collect basic patient information when needed
+
+Be warm, professional, and efficient. Keep responses concise since this is a voice conversation.`,
+
+  'medical_assistant': `You are a medical assistant AI for a healthcare practice. Help patients with medication-related requests, lab results inquiries, pre-visit intake, and preparation instructions.
+
+Key responsibilities:
+- Process medication refill requests
+- Explain lab test results in patient-friendly language
+- Collect pre-visit intake information
+- Provide preparation instructions for upcoming procedures
+
+Always remind patients to consult with their healthcare provider for medical advice. Keep responses concise for voice conversation.`,
+
+  'triage_nurse': `You are a triage nurse AI assistant. Assess patient symptoms, determine urgency levels, and follow protocol-driven pathways to provide appropriate care guidance.
+
+Key responsibilities:
+- Conduct structured symptom assessments
+- Determine urgency levels (emergent, urgent, semi-urgent, routine)
+- Identify red flags requiring immediate emergency care
+- Guide patients to appropriate level of care
+
+CRITICAL: For chest pain, difficulty breathing, stroke symptoms, severe bleeding, or unconsciousness — immediately direct patients to call 911. Keep responses concise for voice conversation.`
+};
+
+// ============================================================
+// PUBLIC ENDPOINTS (no authentication required)
+// These power the main page voice agent feature
+// ============================================================
+
+// Get public agents list for the main page
+router.get('/agents/public', async (req, res) => {
+  try {
+    // Try to get agents from database first
+    const result = await db.query(
+      'SELECT id, name, type, description, greeting_message FROM ai_agents WHERE is_active = true ORDER BY name'
+    );
+
+    if (result.rows.length > 0) {
+      return res.json({
+        agents: result.rows.map(agent => {
+          const normalizedType = agent.type?.toLowerCase().replace(/\s+/g, '_') || '';
+          return {
+            id: agent.id,
+            name: agent.name,
+            type: normalizedType,
+            description: agent.description,
+            greeting_message: agent.greeting_message || 'Hello! How can I help you today?',
+            default_prompt: defaultAgentPrompts[normalizedType] || defaultAgentPrompts['front_desk']
+          };
+        })
+      });
+    }
+
+    // Return default agent types if no agents in DB
+    res.json({
+      agents: [
+        {
+          id: null,
+          name: 'Front Desk',
+          type: 'front_desk',
+          description: 'Handles appointment scheduling, general inquiries, and call routing',
+          greeting_message: 'Hello! Welcome to our practice. How can I help you today?',
+          default_prompt: defaultAgentPrompts['front_desk']
+        },
+        {
+          id: null,
+          name: 'Medical Assistant',
+          type: 'medical_assistant',
+          description: 'Helps with medication refills, lab results, and pre-visit intake',
+          greeting_message: 'Hello! I\'m here to help with your medical needs.',
+          default_prompt: defaultAgentPrompts['medical_assistant']
+        },
+        {
+          id: null,
+          name: 'Triage Nurse Assistant',
+          type: 'triage_nurse',
+          description: 'Assesses symptoms, determines urgency, and provides care guidance',
+          greeting_message: 'Hello! I\'m here to help assess your symptoms and guide you to the right care.',
+          default_prompt: defaultAgentPrompts['triage_nurse']
+        }
+      ]
+    });
+  } catch (error) {
+    console.error('Error fetching public agents:', error);
+    // Return defaults on error so the page always works
+    res.json({
+      agents: [
+        { id: null, name: 'Front Desk', type: 'front_desk', description: 'Handles appointment scheduling, general inquiries, and call routing', default_prompt: defaultAgentPrompts['front_desk'] },
+        { id: null, name: 'Medical Assistant', type: 'medical_assistant', description: 'Helps with medication refills, lab results, and pre-visit intake', default_prompt: defaultAgentPrompts['medical_assistant'] },
+        { id: null, name: 'Triage Nurse Assistant', type: 'triage_nurse', description: 'Assesses symptoms, determines urgency, and provides care guidance', default_prompt: defaultAgentPrompts['triage_nurse'] }
+      ]
+    });
+  }
+});
+
+// Create voice session — generates an OpenAI Realtime API ephemeral token
+// This keeps the real API key on the server while allowing the browser
+// to establish a direct WebRTC connection to OpenAI for minimum latency
+router.post('/session', async (req, res) => {
+  try {
+    const { agentType, systemPrompt, voice = 'coral' } = req.body;
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({
+        message: 'OpenAI API key not configured. Please set OPENAI_API_KEY in the backend .env file.'
+      });
+    }
+
+    // Build the system prompt — use custom prompt if provided, otherwise default
+    const normalizedType = agentType?.toLowerCase().replace(/\s+/g, '_') || 'front_desk';
+    const instructions = systemPrompt || defaultAgentPrompts[normalizedType] || defaultAgentPrompts['front_desk'];
+
+    // Create an ephemeral token via OpenAI Realtime Sessions API
+    const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-realtime',
+        voice: voice,
+        instructions: instructions,
+        modalities: ['text', 'audio'],
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
+        input_audio_transcription: {
+          model: 'whisper-1'
+        },
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('OpenAI Realtime session creation failed:', response.status, errorData);
+      return res.status(502).json({
+        message: 'Failed to create voice session with OpenAI',
+        error: errorData.error?.message || `HTTP ${response.status}`
+      });
+    }
+
+    const data = await response.json();
+
+    console.log('✅ Voice session created:', {
+      sessionId: data.id,
+      model: data.model,
+      voice: voice,
+      agentType: normalizedType
+    });
+
+    res.json({
+      ephemeralToken: data.client_secret?.value,
+      sessionId: data.id,
+      model: data.model,
+      voice: voice,
+      expiresAt: data.client_secret?.expires_at
+    });
+  } catch (error) {
+    console.error('Error creating voice session:', error);
+    res.status(500).json({
+      message: 'Error creating voice session',
+      error: error.message
+    });
+  }
+});
+
+// ============================================================
+// AUTHENTICATED ENDPOINTS (existing routes below)
+// ============================================================
+
 // Get STT configurations for an agent
 router.get('/stt/:agentId', authenticateToken, async (req, res) => {
   try {

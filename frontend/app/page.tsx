@@ -1,15 +1,98 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Logo from '@/components/Logo'
+import VoiceAgentDialog from '@/components/VoiceAgentDialog'
+
+// Agent type configuration
+interface AgentConfig {
+  id: number | null
+  name: string
+  type: string
+  description: string
+  greeting_message?: string
+  default_prompt: string
+}
+
+// Default agents shown before backend data loads
+const DEFAULT_AGENTS: AgentConfig[] = [
+  {
+    id: null,
+    name: 'Front Desk',
+    type: 'front_desk',
+    description: 'Handles appointment scheduling, general inquiries, and call routing',
+    default_prompt: `You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately.
+
+Key responsibilities:
+- Schedule, reschedule, and cancel appointments
+- Answer questions about office hours, location, and services
+- Route urgent matters to appropriate staff
+- Collect basic patient information when needed
+
+Be warm, professional, and efficient. Keep responses concise since this is a voice conversation.`
+  },
+  {
+    id: null,
+    name: 'Medical Assistant',
+    type: 'medical_assistant',
+    description: 'Helps with medication refills, lab results, and pre-visit intake',
+    default_prompt: `You are a medical assistant AI for a healthcare practice. Help patients with medication-related requests, lab results inquiries, pre-visit intake, and preparation instructions.
+
+Key responsibilities:
+- Process medication refill requests
+- Explain lab test results in patient-friendly language
+- Collect pre-visit intake information
+- Provide preparation instructions for upcoming procedures
+
+Always remind patients to consult with their healthcare provider for medical advice. Keep responses concise for voice conversation.`
+  },
+  {
+    id: null,
+    name: 'Triage Nurse Assistant',
+    type: 'triage_nurse',
+    description: 'Assesses symptoms, determines urgency, and provides care guidance',
+    default_prompt: `You are a triage nurse AI assistant. Assess patient symptoms, determine urgency levels, and follow protocol-driven pathways to provide appropriate care guidance.
+
+Key responsibilities:
+- Conduct structured symptom assessments
+- Determine urgency levels (emergent, urgent, semi-urgent, routine)
+- Identify red flags requiring immediate emergency care
+- Guide patients to appropriate level of care
+
+CRITICAL: For chest pain, difficulty breathing, stroke symptoms, severe bleeding, or unconsciousness — immediately direct patients to call 911. Keep responses concise for voice conversation.`
+  }
+]
 
 export default function Home() {
+  const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
+  const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  const agentTypes = [
-    'Front Desk',
-    'Medical Assistant',
-    'Triage Nurse Assistant'
-  ]
+  // Fetch agents from backend (fallback to defaults if unavailable)
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+    fetch(`${API_URL}/voice-ai/agents/public`)
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => {
+        if (data.agents && data.agents.length > 0) {
+          setAgents(data.agents)
+        }
+      })
+      .catch(() => {
+        // Keep defaults — backend might not be running
+      })
+  }, [])
+
+  const handleAgentClick = (agent: AgentConfig) => {
+    setSelectedAgent(agent)
+    setIsDialogOpen(true)
+  }
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false)
+    setSelectedAgent(null)
+  }
 
   return (
     <>
@@ -167,19 +250,42 @@ export default function Home() {
 
               {/* Agent List */}
               <div className="w-full space-y-3">
-                {agentTypes.map((agent, index) => (
-                  <div
+                {agents.map((agent, index) => (
+                  <button
                     key={index}
-                    className="bg-gray-200/20 hover:bg-gray-200/30 text-white font-medium py-3 px-4 rounded-lg transition-colors cursor-pointer"
+                    onClick={() => handleAgentClick(agent)}
+                    className="w-full bg-gray-200/20 hover:bg-teal-500/20 hover:border-teal-400/40 text-white font-medium py-3 px-4 rounded-lg transition-all cursor-pointer border border-transparent text-left group flex items-center justify-between"
                   >
-                    {agent}
-                  </div>
+                    <span>{agent.name}</span>
+                    <svg
+                      className="w-5 h-5 text-slate-400 group-hover:text-teal-400 transition-colors"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                      />
+                    </svg>
+                  </button>
                 ))}
               </div>
             </div>
           </div>
         </div>
       </main>
+
+      {/* Voice Agent Dialog */}
+      {selectedAgent && (
+        <VoiceAgentDialog
+          isOpen={isDialogOpen}
+          onClose={handleDialogClose}
+          agent={selectedAgent}
+        />
+      )}
       </div>
     </>
   )
