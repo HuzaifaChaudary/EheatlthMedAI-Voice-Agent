@@ -106,7 +106,36 @@ router.post('/', authenticateToken, async (req, res) => {
       [req.user.id]
     );
 
-    const orgId = orgResult.rows[0].organization_id;
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    let orgId = orgResult.rows[0]?.organization_id || null;
+
+    // Auto-assign an organization if user does not have one
+    // This prevents agent creation failures for newly created users
+    if (!orgId) {
+      const existingOrgResult = await db.query(
+        'SELECT id FROM organizations ORDER BY id LIMIT 1'
+      );
+
+      if (existingOrgResult.rows.length > 0) {
+        orgId = existingOrgResult.rows[0].id;
+      } else {
+        const createdOrgResult = await db.query(
+          `INSERT INTO organizations (name, subdomain, is_active, subscription_tier, max_agents, max_users, max_calls_per_month)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          ['Default Organization', 'default', true, 'starter', 5, 10, 1000]
+        );
+        orgId = createdOrgResult.rows[0].id;
+      }
+
+      await db.query(
+        'UPDATE users SET organization_id = $1 WHERE id = $2',
+        [orgId, req.user.id]
+      );
+    }
 
     const {
       name, type, description, configuration,
@@ -152,8 +181,24 @@ router.post('/', authenticateToken, async (req, res) => {
 
     res.status(201).json({ agent: result.rows[0] });
   } catch (error) {
-    console.error('Error creating agent:', error);
-    res.status(500).json({ message: 'Error creating AI agent' });
+    console.error('Error creating agent:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      userId: req.user?.id
+    });
+
+    if (error.code === '42703' && error.message?.includes('calendar_integration_id')) {
+      return res.status(500).json({
+        message: 'Database schema mismatch detected for ai_agents. Restart backend to apply db-updates.sql and try again.'
+      });
+    }
+
+    res.status(500).json({
+      message: 'Error creating AI agent',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -229,6 +274,108 @@ router.put('/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating agent:', error);
     res.status(500).json({ message: 'Error updating AI agent' });
+  }
+});
+
+// Delete agent
+router.delete('/:id', authenticateToken, async (req, res) => {
+  let client;
+
+  try {
+    const { id } = req.params;
+    const agentId = parseInt(id, 10);
+
+    if (Number.isNaN(agentId)) {
+      return res.status(400).json({ message: 'Invalid agent id' });
+    }
+
+    const orgResult = await db.query(
+      'SELECT organization_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const orgId = orgResult.rows[0]?.organization_id || null;
+
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+
+    let agentResult;
+    if (req.user.role === 'admin') {
+      agentResult = await client.query(
+        'SELECT id, name, organization_id FROM ai_agents WHERE id = $1 FOR UPDATE',
+        [agentId]
+      );
+    } else if (orgId) {
+      agentResult = await client.query(
+        'SELECT id, name, organization_id FROM ai_agents WHERE id = $1 AND organization_id = $2 FOR UPDATE',
+        [agentId, orgId]
+      );
+    } else {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'Access denied. No organization assigned.' });
+    }
+
+    if (agentResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Agent not found' });
+    }
+
+    const agent = agentResult.rows[0];
+
+    await client.query('DELETE FROM voice_channels WHERE agent_id = $1', [agentId]);
+    await client.query('DELETE FROM tts_configurations WHERE agent_id = $1', [agentId]);
+    await client.query('DELETE FROM stt_configurations WHERE agent_id = $1', [agentId]);
+    await client.query('DELETE FROM nlu_configurations WHERE agent_id = $1', [agentId]);
+
+    await client.query('UPDATE call_logs SET agent_id = NULL WHERE agent_id = $1', [agentId]);
+    await client.query('UPDATE call_metrics SET agent_id = NULL WHERE agent_id = $1', [agentId]);
+    await client.query('UPDATE conversations SET agent_id = NULL WHERE agent_id = $1', [agentId]);
+    await client.query('UPDATE agent_performance SET agent_id = NULL WHERE agent_id = $1', [agentId]);
+
+    const deleted = await client.query(
+      'DELETE FROM ai_agents WHERE id = $1 RETURNING id, name',
+      [agentId]
+    );
+
+    if (deleted.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Agent not found' });
+    }
+
+    await client.query(
+      'INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)',
+      [
+        req.user.id,
+        'DELETE_AGENT',
+        'ai_agents',
+        agentId,
+        JSON.stringify({ name: agent.name, organization_id: agent.organization_id })
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Agent deleted successfully',
+      agent: deleted.rows[0]
+    });
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK');
+    }
+
+    console.error('Error deleting agent:', error);
+
+    if (error.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete agent because it is still referenced by other records'
+      });
+    }
+
+    res.status(500).json({ message: 'Error deleting AI agent' });
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 });
 

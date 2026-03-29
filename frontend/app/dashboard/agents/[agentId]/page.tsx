@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, Save, Play, Square, Settings, Calendar, Database, MessageSquare, Monitor, X, FileText, Phone } from 'lucide-react'
-import { get, put, post } from '@/lib/api'
+import { ChevronLeft, Save, Play, Square, Settings, Calendar, Database, MessageSquare, Monitor, X, FileText, Phone, Trash2 } from 'lucide-react'
+import { get, put, post, del } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useSocket } from '@/components/providers/SocketProvider'
 import ChatInterface from '@/components/ChatInterface'
+import VoiceAgentDialog from '@/components/VoiceAgentDialog'
 
 interface Agent {
   id: number
@@ -19,6 +20,7 @@ interface Agent {
   is_active: boolean
   configuration: any
   voice_model: string
+  voice_settings?: any
   system_prompt: string
   temperature: number
   phone_number_id: number | null
@@ -26,6 +28,17 @@ interface Agent {
   escalation_rules: any
   updated_at: string
 }
+
+const REALTIME_VOICES = [
+  { id: 'coral', label: 'Coral' },
+  { id: 'alloy', label: 'Alloy' },
+  { id: 'ash', label: 'Ash' },
+  { id: 'ballad', label: 'Ballad' },
+  { id: 'echo', label: 'Echo' },
+  { id: 'sage', label: 'Sage' },
+  { id: 'shimmer', label: 'Shimmer' },
+  { id: 'verse', label: 'Verse' },
+]
 
 interface PhoneNumber {
   id: number
@@ -53,6 +66,18 @@ interface CallLog {
   transcription_text: string
 }
 
+const normalizeAgentTypeForVoice = (type: string) => {
+  const normalized = (type || '').toLowerCase().replace(/\s+/g, '_')
+
+  if (normalized.includes('front_desk')) return 'front_desk'
+  if (normalized.includes('medical_assistant')) return 'medical_assistant'
+  if (normalized.includes('triage_nurse') || normalized === 'triage_nurse' || normalized === 'triage') return 'triage_nurse'
+  if (normalized.includes('billing_specialist') || normalized.includes('billing')) return 'billing_specialist'
+  if (normalized.includes('collections_specialist') || normalized.includes('collections')) return 'collections_specialist'
+
+  return normalized || 'front_desk'
+}
+
 export default function AgentConfigurationPage() {
   const params = useParams()
   const router = useRouter()
@@ -61,6 +86,7 @@ export default function AgentConfigurationPage() {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -76,6 +102,7 @@ export default function AgentConfigurationPage() {
   
   // Simulate call modal
   const [showSimulateModal, setShowSimulateModal] = useState(false)
+  const [showVoiceCallModal, setShowVoiceCallModal] = useState(false)
 
   // Phone numbers state
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
@@ -85,6 +112,7 @@ export default function AgentConfigurationPage() {
   const [prompt, setPrompt] = useState('')
   const [isActive, setIsActive] = useState(false)
   const [voiceModel, setVoiceModel] = useState('openai')
+  const [realtimeVoice, setRealtimeVoice] = useState('coral')
   const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState<string | number>('')
   const [selectedCalendarIntegrationId, setSelectedCalendarIntegrationId] = useState<string | number>('')
   const [selectedCalendarProvider, setSelectedCalendarProvider] = useState('off')
@@ -97,6 +125,19 @@ export default function AgentConfigurationPage() {
     fetchIntegrations()
     fetchPhoneNumbers()
   }, [params.agentId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const flash = sessionStorage.getItem('agent_config_flash_message')
+    if (!flash) return
+
+    setMessage(flash)
+    sessionStorage.removeItem('agent_config_flash_message')
+
+    const timer = setTimeout(() => setMessage(''), 4000)
+    return () => clearTimeout(timer)
+  }, [])
 
   const fetchPhoneNumbers = async () => {
     try {
@@ -121,6 +162,12 @@ export default function AgentConfigurationPage() {
         setPrompt(data.system_prompt || '')
         setIsActive(data.is_active)
         setVoiceModel(data.voice_model || 'openai')
+        const voiceSettings = typeof data.voice_settings === 'string'
+          ? (() => {
+            try { return JSON.parse(data.voice_settings) } catch { return {} }
+          })()
+          : (data.voice_settings || {})
+        setRealtimeVoice(voiceSettings.voice || 'coral')
         setSelectedPhoneNumberId(data.phone_number_id || '')
         setSelectedCalendarIntegrationId(data.calendar_integration_id || '')
         // Load emergency contact from escalation_rules
@@ -210,6 +257,10 @@ export default function AgentConfigurationPage() {
         system_prompt: prompt,
         is_active: isActive,
         voice_model: voiceModel,
+        voice_settings: {
+          ...((agent?.voice_settings && typeof agent.voice_settings === 'object') ? agent.voice_settings : {}),
+          voice: realtimeVoice
+        },
         phone_number_id: selectedPhoneNumberId || null,
         calendar_integration_id: selectedCalendarIntegrationId || null,
         escalation_rules: Object.keys(escalationRules).length > 0 ? escalationRules : null
@@ -241,6 +292,37 @@ export default function AgentConfigurationPage() {
       // Revert if failed
       setIsActive(!newStatus)
       setError('Failed to update status')
+    }
+  }
+
+  const handleDeleteAgent = async () => {
+    if (!agent || deleting) return
+
+    const confirmDelete = window.confirm(
+      `Delete "${agent.name}"? This action cannot be undone.`
+    )
+
+    if (!confirmDelete) return
+
+    setDeleting(true)
+    setError('')
+
+    try {
+      const response = await del(`/agents/${params.agentId}`)
+
+      if (response.error) {
+        throw new Error(response.error)
+      }
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboard_flash_message', `Agent "${agent.name}" deleted successfully`)
+      }
+
+      router.push('/dashboard')
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete agent')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -528,6 +610,22 @@ export default function AgentConfigurationPage() {
                   </div>
 
                   <div>
+                    <label className="block text-sm text-slate-400 mb-2">Realtime Voice</label>
+                    <select
+                      value={realtimeVoice}
+                      onChange={(e) => setRealtimeVoice(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal-500"
+                    >
+                      {REALTIME_VOICES.map((voice) => (
+                        <option key={voice.id} value={voice.id}>{voice.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-2">
+                      Used when connecting directly to this voice agent.
+                    </p>
+                  </div>
+
+                  <div>
                     <label className="block text-sm text-slate-400 mb-2 flex items-center">
                       <Phone className="mr-2 text-teal-400" size={16} />
                       Linked Phone Number
@@ -630,6 +728,14 @@ export default function AgentConfigurationPage() {
                   Test & Monitor
                 </h3>
                 <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left"
+                    onClick={() => setShowVoiceCallModal(true)}
+                  >
+                    <Phone size={16} className="mr-2" />
+                    Connect to Voice Agent
+                  </Button>
                   <Button 
                     variant="outline" 
                     className="w-full justify-start text-left"
@@ -652,6 +758,15 @@ export default function AgentConfigurationPage() {
                       Telephony Dashboard
                     </Button>
                   </Link>
+                  <Button
+                    variant="destructive"
+                    className="w-full justify-start text-left"
+                    onClick={handleDeleteAgent}
+                    loading={deleting}
+                  >
+                    <Trash2 size={16} className="mr-2" />
+                    Delete Agent
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -681,6 +796,24 @@ export default function AgentConfigurationPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Voice Call Modal */}
+      {showVoiceCallModal && agent && (
+        <VoiceAgentDialog
+          isOpen={showVoiceCallModal}
+          onClose={() => setShowVoiceCallModal(false)}
+          autoConnect={true}
+          closeOnEndCall={true}
+          initialVoice={realtimeVoice}
+          agent={{
+            id: agent.id,
+            name: agent.name,
+            type: normalizeAgentTypeForVoice(agent.type),
+            description: agent.description || `${agent.type} voice agent`,
+            default_prompt: prompt || agent.system_prompt || `You are a helpful ${agent.type}.`
+          }}
+        />
       )}
 
       {/* Conversation Logs Modal */}

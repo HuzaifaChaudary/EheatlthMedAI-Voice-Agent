@@ -70,7 +70,7 @@ CORS_ORIGIN=http://localhost:3000
 Create a PostgreSQL database:
 
 ```bash
-createdb ehealth_med_ai
+createdb ehealthmedai
 ```
 
 Or using psql:
