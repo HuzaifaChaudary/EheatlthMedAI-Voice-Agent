@@ -20,6 +20,7 @@ ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS system_prompt TEXT;
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS temperature NUMERIC(3,2) DEFAULT 0.7;
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS max_tokens INTEGER DEFAULT 1000;
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS phone_number_id INTEGER;
+ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS calendar_integration_id INTEGER REFERENCES integrations(id);
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS greeting_message TEXT;
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS fallback_message TEXT;
 ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS business_hours JSONB;
@@ -33,6 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_token);
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 CREATE INDEX IF NOT EXISTS idx_users_organization_id ON users(organization_id);
 CREATE INDEX IF NOT EXISTS idx_ai_agents_organization_id ON ai_agents(organization_id);
+CREATE INDEX IF NOT EXISTS idx_ai_agents_calendar_integration ON ai_agents(calendar_integration_id);
 
 
 -- Additional updates for new tables

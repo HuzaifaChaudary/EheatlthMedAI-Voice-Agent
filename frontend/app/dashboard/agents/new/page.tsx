@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, Save, Phone } from 'lucide-react'
+import { ChevronLeft, Phone } from 'lucide-react'
 import { post, get } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
 
 interface PhoneNumber {
   id: number
@@ -14,6 +13,40 @@ interface PhoneNumber {
   provider: string
   is_active: boolean
 }
+
+type AgentRole =
+    | 'Front Desk Assistant'
+    | 'Billing Specialist'
+    | 'Collections Specialist'
+    | 'Medical Assistant'
+    | 'Triage Nurse'
+
+const DEFAULT_ROLE: AgentRole = 'Front Desk Assistant'
+
+const ROLE_TEMPLATES: Record<AgentRole, { description: string; systemPrompt: string }> = {
+    'Front Desk Assistant': {
+        description: 'Handles appointment scheduling, patient check-ins, and general inquiries.',
+        systemPrompt: 'You are a professional front desk assistant for a medical practice. Help patients with appointment scheduling, general inquiries, and routing calls appropriately. Be warm, clear, and efficient. Ask concise follow-up questions only when needed.'
+    },
+    'Billing Specialist': {
+        description: 'Manages billing inquiries, payments, and insurance-related questions.',
+        systemPrompt: 'You are a billing specialist AI assistant for a medical practice. Help patients understand statements, discuss balances, and guide payment options. Be empathetic, professional, and privacy-conscious. Keep responses concise for voice conversations.'
+    },
+    'Collections Specialist': {
+        description: 'Supports overdue balance resolution and payment arrangement discussions.',
+        systemPrompt: 'You are a collections specialist AI assistant. Help patients resolve overdue balances with empathy and professionalism. Offer practical payment plan options, avoid threatening language, and maintain a respectful tone throughout the conversation.'
+    },
+    'Medical Assistant': {
+        description: 'Assists with medication requests, lab result guidance, and pre-visit intake.',
+        systemPrompt: 'You are a medical assistant AI for a healthcare practice. Help with medication refill requests, lab result explanations, and pre-visit intake workflows. Be clear, safe, and concise. Remind patients to consult their healthcare provider for medical advice.'
+    },
+    'Triage Nurse': {
+        description: 'Performs symptom triage and urgency assessment to guide next steps.',
+        systemPrompt: 'You are a triage nurse AI assistant. Assess symptoms, identify urgency, and guide patients to the appropriate level of care. For severe red-flag symptoms, direct patients to emergency care immediately. Keep responses brief and structured for voice.'
+    }
+}
+
+const isAgentRole = (value: string): value is AgentRole => value in ROLE_TEMPLATES
 
 export default function CreateAgentPage() {
     const router = useRouter()
@@ -24,8 +57,9 @@ export default function CreateAgentPage() {
 
     const [formData, setFormData] = useState({
         name: '',
-        type: 'Front Desk Assistant', // Default
-        description: '',
+        type: DEFAULT_ROLE,
+        description: ROLE_TEMPLATES[DEFAULT_ROLE].description,
+        system_prompt: ROLE_TEMPLATES[DEFAULT_ROLE].systemPrompt,
         voice_model: 'openai',
         phone_number_id: '' as string | number
     })
@@ -50,6 +84,17 @@ export default function CreateAgentPage() {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
+
+        if (name === 'type' && isAgentRole(value)) {
+            setFormData(prev => ({
+                ...prev,
+                type: value,
+                description: ROLE_TEMPLATES[value].description,
+                system_prompt: ROLE_TEMPLATES[value].systemPrompt
+            }))
+            return
+        }
+
         setFormData(prev => ({ ...prev, [name]: value }))
     }
 
@@ -67,7 +112,7 @@ export default function CreateAgentPage() {
                 phone_number_id: formData.phone_number_id || null,
                 is_active: true,
                 configuration: {}, // Empty default config
-                system_prompt: `You are a helpful ${formData.type}.` // Simple default prompt
+                system_prompt: formData.system_prompt
             })
 
             if (response.error) {
@@ -76,12 +121,19 @@ export default function CreateAgentPage() {
 
             // Redirect to the config page for the new agent
             if (response.data?.agent?.id) {
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('agent_config_flash_message', `Agent "${formData.name}" created successfully`)
+                }
                 router.push(`/dashboard/agents/${response.data.agent.id}`)
             } else {
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('dashboard_flash_message', `Agent "${formData.name}" created successfully`)
+                }
                 router.push('/dashboard')
             }
         } catch (err: any) {
             setError(err.message || 'Failed to create agent')
+        } finally {
             setLoading(false)
         }
     }
@@ -140,18 +192,32 @@ export default function CreateAgentPage() {
                                     <option value="Medical Assistant">Medical Assistant</option>
                                     <option value="Triage Nurse">Triage Nurse</option>
                                 </select>
+                                <p className="text-xs text-slate-400 mt-2">{formData.description}</p>
                             </div>
 
                             <div>
-                                <label className="block text-slate-300 text-sm mb-2">Description</label>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-slate-300 text-sm">System Prompt</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, system_prompt: ROLE_TEMPLATES[prev.type as AgentRole].systemPrompt }))}
+                                        className="text-xs text-teal-400 hover:text-teal-300 transition-colors"
+                                    >
+                                        Reset to role default
+                                    </button>
+                                </div>
                                 <textarea
-                                    name="description"
-                                    value={formData.description}
+                                    name="system_prompt"
+                                    value={formData.system_prompt}
                                     onChange={handleChange}
-                                    rows={3}
+                                    rows={7}
+                                    required
                                     className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-teal-500 resize-none transition-colors"
-                                    placeholder="Briefly describe this agent's purpose..."
+                                    placeholder="Define the agent's behavior, tone, and goals..."
                                 />
+                                <p className="text-xs text-slate-400 mt-2">
+                                    This prompt controls how the agent responds in voice and chat interactions.
+                                </p>
                             </div>
 
                             <div>

@@ -9,7 +9,8 @@ import { get } from '@/lib/api'
 import { useSocket } from '@/components/providers/SocketProvider'
 import { AnalyticsChart } from '@/components/charts/AnalyticsChart'
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard'
-import { Activity, Users, PhoneCall, AlertTriangle } from 'lucide-react'
+import { Activity, Users, PhoneCall, AlertTriangle, Phone } from 'lucide-react'
+import VoiceAgentDialog from '@/components/VoiceAgentDialog'
 
 interface Agent {
   id: number
@@ -17,6 +18,35 @@ interface Agent {
   type: string
   description: string
   is_active: boolean
+  system_prompt?: string
+  voice_settings?: any
+}
+
+const normalizeAgentTypeForVoice = (type: string) => {
+  const normalized = (type || '').toLowerCase().replace(/\s+/g, '_')
+
+  if (normalized.includes('front_desk')) return 'front_desk'
+  if (normalized.includes('medical_assistant')) return 'medical_assistant'
+  if (normalized.includes('triage_nurse') || normalized === 'triage') return 'triage_nurse'
+  if (normalized.includes('billing_specialist') || normalized.includes('billing')) return 'billing_specialist'
+  if (normalized.includes('collections_specialist') || normalized.includes('collections')) return 'collections_specialist'
+
+  return normalized || 'front_desk'
+}
+
+const getAgentRealtimeVoice = (voiceSettings: any) => {
+  if (!voiceSettings) return 'coral'
+
+  if (typeof voiceSettings === 'string') {
+    try {
+      const parsed = JSON.parse(voiceSettings)
+      return parsed?.voice || 'coral'
+    } catch {
+      return 'coral'
+    }
+  }
+
+  return voiceSettings?.voice || 'coral'
 }
 
 export default function DashboardPage() {
@@ -24,7 +54,10 @@ export default function DashboardPage() {
   const { socket, isConnected } = useSocket()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
+  const [flashMessage, setFlashMessage] = useState('')
   const [user, setUser] = useState<any>(null)
+  const [showVoiceCallModal, setShowVoiceCallModal] = useState(false)
+  const [selectedVoiceAgent, setSelectedVoiceAgent] = useState<Agent | null>(null)
 
   // Real-time stats state
   const [stats, setStats] = useState({
@@ -67,6 +100,22 @@ export default function DashboardPage() {
       }
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const message = sessionStorage.getItem('dashboard_flash_message')
+    if (!message) return
+
+    setFlashMessage(message)
+    sessionStorage.removeItem('dashboard_flash_message')
+
+    const timer = setTimeout(() => {
+      setFlashMessage('')
+    }, 4000)
+
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     // Check if we just logged in (need to wait longer for token to be available)
@@ -257,6 +306,11 @@ export default function DashboardPage() {
     router.push('/')
   }
 
+  const handleConnectVoiceAgent = (agent: Agent) => {
+    setSelectedVoiceAgent(agent)
+    setShowVoiceCallModal(true)
+  }
+
   // Check if user is admin and show admin link
   const isAdmin = user?.role === 'admin'
 
@@ -331,6 +385,13 @@ export default function DashboardPage() {
             Manage your AI Voice Agents and monitor activity
           </p>
         </div>
+
+        {flashMessage && (
+          <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-lg mb-8 flex items-center animate-fade-in">
+            <span className="mr-2">✓</span>
+            <span>{flashMessage}</span>
+          </div>
+        )}
 
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -617,13 +678,23 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className="text-slate-200 mb-4">{agent.description}</p>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-3">
                 <span className="text-teal-300 text-sm font-medium">
                   {agent.type}
                 </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleConnectVoiceAgent(agent)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center"
+                >
+                  <Phone size={14} className="mr-1" />
+                  Connect Voice
+                </button>
                 <Link
                   href={`/dashboard/agents/${agent.id}`}
-                  className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-block"
+                  className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center"
                 >
                   Configure
                 </Link>
@@ -631,6 +702,26 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+
+        {showVoiceCallModal && selectedVoiceAgent && (
+          <VoiceAgentDialog
+            isOpen={showVoiceCallModal}
+            onClose={() => {
+              setShowVoiceCallModal(false)
+              setSelectedVoiceAgent(null)
+            }}
+            autoConnect={true}
+            closeOnEndCall={true}
+            initialVoice={getAgentRealtimeVoice(selectedVoiceAgent.voice_settings)}
+            agent={{
+              id: selectedVoiceAgent.id,
+              name: selectedVoiceAgent.name,
+              type: normalizeAgentTypeForVoice(selectedVoiceAgent.type),
+              description: selectedVoiceAgent.description || `${selectedVoiceAgent.type} voice agent`,
+              default_prompt: selectedVoiceAgent.system_prompt || `You are a helpful ${selectedVoiceAgent.type}.`
+            }}
+          />
+        )}
 
         {agents.length === 0 && (
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-12 text-center">

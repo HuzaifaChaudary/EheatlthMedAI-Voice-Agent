@@ -29,6 +29,9 @@ interface VoiceAgentDialogProps {
   isOpen: boolean
   onClose: () => void
   agent: AgentConfig
+  autoConnect?: boolean
+  closeOnEndCall?: boolean
+  initialVoice?: string
 }
 
 // Available OpenAI Realtime voices
@@ -53,10 +56,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || (
 // Component
 // ────────────────────────────────────────────────
 
-export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentDialogProps) {
+export default function VoiceAgentDialog({ isOpen, onClose, agent, autoConnect = false, closeOnEndCall = false, initialVoice = 'coral' }: VoiceAgentDialogProps) {
   // Form state
   const [systemPrompt, setSystemPrompt] = useState(agent.default_prompt)
-  const [voice, setVoice] = useState('coral')
+  const [voice, setVoice] = useState(initialVoice)
   const [showPromptEditor, setShowPromptEditor] = useState(true)
 
   // Connection state
@@ -78,6 +81,9 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const callStartRef = useRef<number>(0)
+  const autoConnectAttemptedRef = useRef(false)
+  const connectInProgressRef = useRef(false)
+  const autoConnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ────────────────────────────────────────────
   // Effects
@@ -87,6 +93,7 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
   useEffect(() => {
     if (isOpen) {
       setSystemPrompt(agent.default_prompt)
+      setVoice(initialVoice)
       setMessages([])
       setError(null)
       setStatus('idle')
@@ -94,13 +101,24 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
       setIsAiSpeaking(false)
       setIsUserSpeaking(false)
       setCallDuration(0)
-      setShowPromptEditor(true)
+      setShowPromptEditor(!autoConnect)
+      autoConnectAttemptedRef.current = false
+      connectInProgressRef.current = false
     }
+
     return () => {
-      // Cleanup on unmount
-      if (!isOpen) disconnect()
+      if (autoConnectTimerRef.current) {
+        clearTimeout(autoConnectTimerRef.current)
+        autoConnectTimerRef.current = null
+      }
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current)
+        callTimerRef.current = null
+      }
+      cleanupConnection()
+      connectInProgressRef.current = false
     }
-  }, [isOpen, agent.type])
+  }, [isOpen, agent.type, autoConnect, initialVoice])
 
   // Auto-scroll messages
   useEffect(() => {
@@ -130,12 +148,20 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
   // ────────────────────────────────────────────
 
   const connect = async () => {
+    if (connectInProgressRef.current || status === 'connecting' || status === 'connected') {
+      return
+    }
+
     try {
+      connectInProgressRef.current = true
       setStatus('connecting')
       setError(null)
       setMessages([])
       setPartialAiText('')
       setShowPromptEditor(false)
+
+      // Ensure any stale connection is fully closed before new connect
+      cleanupConnection()
 
       // Step 1: Get ephemeral token from our backend
       const tokenRes = await fetch(`${API_URL}/voice-ai/session`, {
@@ -250,6 +276,7 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
       await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
 
       setStatus('connected')
+      connectInProgressRef.current = false
 
       // Monitor ICE connection state
       pc.oniceconnectionstatechange = () => {
@@ -265,6 +292,7 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
       setError(err.message || 'Failed to connect')
       setStatus('error')
       cleanupConnection()
+      connectInProgressRef.current = false
     }
   }
 
@@ -288,17 +316,42 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
   }
 
   const disconnect = useCallback(() => {
+    if (autoConnectTimerRef.current) {
+      clearTimeout(autoConnectTimerRef.current)
+      autoConnectTimerRef.current = null
+    }
     cleanupConnection()
+    connectInProgressRef.current = false
     setStatus('idle')
     setIsAiSpeaking(false)
     setIsUserSpeaking(false)
     setPartialAiText('')
+    setCallDuration(0)
   }, [])
 
   const handleClose = () => {
     disconnect()
     onClose()
   }
+
+  useEffect(() => {
+    if (!isOpen || !autoConnect) return
+    if (autoConnectAttemptedRef.current) return
+    if (status !== 'idle') return
+
+    autoConnectAttemptedRef.current = true
+    // Delay connect to avoid duplicate effect execution in React StrictMode (dev)
+    autoConnectTimerRef.current = setTimeout(() => {
+      connect()
+    }, 100)
+
+    return () => {
+      if (autoConnectTimerRef.current) {
+        clearTimeout(autoConnectTimerRef.current)
+        autoConnectTimerRef.current = null
+      }
+    }
+  }, [isOpen, autoConnect, status])
 
   // ────────────────────────────────────────────
   // Realtime Event Handler
@@ -666,25 +719,41 @@ export default function VoiceAgentDialog({ isOpen, onClose, agent }: VoiceAgentD
             </div>
           ) : status === 'connecting' ? (
             <button
-              onClick={() => { disconnect(); setShowPromptEditor(true) }}
+              onClick={() => {
+                if (closeOnEndCall) {
+                  handleClose()
+                  return
+                }
+                disconnect()
+                setShowPromptEditor(true)
+              }}
               className="w-full py-3 px-4 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
             >
               Cancel
             </button>
           ) : (
             <div className="flex gap-3">
+              {!closeOnEndCall && (
+                <button
+                  onClick={() => setShowPromptEditor(!showPromptEditor)}
+                  className="py-3 px-4 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 transition-colors"
+                  title="Show/hide prompt"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+              )}
               <button
-                onClick={() => setShowPromptEditor(!showPromptEditor)}
-                className="py-3 px-4 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 transition-colors"
-                title="Show/hide prompt"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => { disconnect(); setShowPromptEditor(true) }}
+                onClick={() => {
+                  if (closeOnEndCall) {
+                    handleClose()
+                    return
+                  }
+                  disconnect()
+                  setShowPromptEditor(true)
+                }}
                 className="flex-1 py-3 px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
